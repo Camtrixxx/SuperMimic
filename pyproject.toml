@@ -11,7 +11,7 @@ license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.13,<3.14"
 dependencies = [
-    "mjlab",
+    "mjlab[cu126]",
     "ruff>=0.14.10",
     "viser>=1.0.24",
 ]
@@ -41,3 +41,11 @@ dev = [
     "pyright>=1.1.408",
     "pytest>=9.0.2",
 ]
+
+# repro: host driver is R550 (CUDA 12.4). PyPI warp-lang>=1.18 is built with
+# CUDA 13.4 and needs R580+, so use NVIDIA's +cu12 release wheel (R525+).
+[tool.uv]
+override-dependencies = ["warp-lang==1.19.0+cu12"]
+
+[tool.uv.sources.warp-lang]
+path = "../../wheels/warp_lang-1.19.0+cu12-py3-none-manylinux_2_28_x86_64.whl"

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
@@ -470,6 +471,12 @@ class BaseRunner[CfgT: BaseRunnerCfg]:
       "runner_cfg": asdict(self.cfg),
     }
 
+    # repro: keep the config next to the checkpoints so local tools (eval)
+    # can rebuild the run without W&B.
+    (log_dir / "run_config.json").write_text(
+      json.dumps(wandb_config, default=str, indent=1)
+    )
+
     default_name = f"{self.task_id}{name_suffix}-{log_dir.name}"
     wandb.init(
       project=self.cfg.wandb_project,
@@ -670,6 +677,7 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
 
     num_collected_steps = 0
     start_time = time.time()
+    run_start_time = start_time
     wm_learn_time = 0.0
     policy_learn_time = 0.0
     loss_dict: dict[str, torch.Tensor] = {}
@@ -748,6 +756,19 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
             run_name=wandb.run.name,
             term_widths=self._representation.proprio_term_widths(self._num_actions),
           )
+        # repro: keep every checkpoint (the files above are overwritten) with
+        # wall-clock since training start, for return-vs-time curves.
+        snap_dir = log_dir / "snapshots"
+        snap_dir.mkdir(exist_ok=True)
+        torch.save(
+          {
+            "iteration": step,
+            "wall_time_s": time.time() - run_start_time,
+            "world_model": self._wm.bundle(),
+            "actor": self.policy_learner.actor.state_dict(),
+          },
+          snap_dir / f"it{step:07d}.pt",
+        )
         upload = uploader.submit(log_model_artifact, checkpoint_files)
 
     uploader.shutdown()
