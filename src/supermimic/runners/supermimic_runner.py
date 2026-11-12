@@ -459,8 +459,20 @@ class BaseRunner[CfgT: BaseRunnerCfg]:
   def _create_log_dir(self, *extra_parts: str) -> Path:
     """Create and return a timestamped log directory."""
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_dir = Path("logs", self.task_id, *extra_parts, timestamp)
-    log_dir.mkdir(parents=True, exist_ok=True)
+    # repro: runs launched in the same second used to share one directory and
+    # overwrite each other's checkpoints. Name by run and never reuse a dir.
+    name = f"{timestamp}_{self.cfg.run_name}" if self.cfg.run_name else timestamp
+    parent = Path("logs", self.task_id, *extra_parts)
+    parent.mkdir(parents=True, exist_ok=True)
+    log_dir = parent / name
+    suffix = 1
+    while True:
+      try:
+        log_dir.mkdir()
+        break
+      except FileExistsError:
+        suffix += 1
+        log_dir = parent / f"{name}_{suffix}"
     print(f"[INFO] Logging to {log_dir}")
     return log_dir
 
