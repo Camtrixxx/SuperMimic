@@ -37,7 +37,9 @@ include = ["src"]
 [dependency-groups]
 dev = [
     "ipdb>=0.13.13",
+    "pandas>=3.1.1",
     "pre-commit>=4.2.0",
+    "pyarrow>=26.0.1",
     "pyright>=1.1.408",
     "pytest>=9.0.2",
 ]

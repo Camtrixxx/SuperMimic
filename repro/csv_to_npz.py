@@ -20,8 +20,10 @@ from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 
 import numpy as np
+import pandas as pd
 import torch
 import tyro
+from scipy.spatial.transform import Rotation
 from mjlab.scripts.csv_to_npz import JOINT_NAMES
 from mjlab.utils.lab_api.math import (
   axis_angle_from_quat,
@@ -60,12 +62,37 @@ def batched_slerp(q1: torch.Tensor, q2: torch.Tensor, tau: torch.Tensor) -> torc
   return out
 
 
-def convert(path: str, input_fps: float, output_fps: float) -> dict[str, np.ndarray]:
+def read_lafan(path: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  """Headerless rows ``[pos_m(3), quat_xyzw(4), joint_rad(29)]``."""
   motion = torch.from_numpy(np.loadtxt(path, delimiter=",", ndmin=2)).float()
-  pos_in = motion[:, :3]
-  rot_in = motion[:, 3:7][:, [3, 0, 1, 2]]  # xyzw -> wxyz
-  dof_in = motion[:, 7 : 7 + len(JOINT_NAMES)]
-  n_in = motion.shape[0]
+  return motion[:, :3], motion[:, 3:7][:, [3, 0, 1, 2]], motion[:, 7 : 7 + len(JOINT_NAMES)]
+
+
+def read_bones(path: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+  """BONES-SEED G1 CSV: header ``Frame, root_translate{X,Y,Z} [cm],
+  root_rotate{X,Y,Z} [deg], <joint>_dof [deg] ...``.
+
+  Root rotation follows SONIC's converter exactly:
+  ``scipy Rotation.from_euler("xyz", deg)`` (lowercase = extrinsic in scipy,
+  although SONIC's comment says intrinsic). Joints are matched by name.
+  """
+  df = pd.read_csv(path)
+  pos = df[["root_translateX", "root_translateY", "root_translateZ"]].to_numpy() / 100.0
+  euler = df[["root_rotateX", "root_rotateY", "root_rotateZ"]].to_numpy()
+  quat_xyzw = Rotation.from_euler("xyz", euler, degrees=True).as_quat()
+  dof = np.deg2rad(df[[f"{j}_dof" for j in JOINT_NAMES]].to_numpy())
+  as_t = lambda a: torch.from_numpy(np.ascontiguousarray(a)).float()  # noqa: E731
+  return as_t(pos), as_t(quat_xyzw[:, [3, 0, 1, 2]]), as_t(dof)
+
+
+READERS = {"lafan": read_lafan, "bones": read_bones}
+
+
+def convert(
+  path: str, input_fps: float, output_fps: float, fmt: str = "lafan"
+) -> dict[str, np.ndarray]:
+  pos_in, rot_in, dof_in = READERS[fmt](path)
+  n_in = pos_in.shape[0]
   in_dt, out_dt = 1.0 / input_fps, 1.0 / output_fps
   duration = (n_in - 1) * in_dt
 
@@ -107,12 +134,16 @@ class Args:
   output_fps: float = 50.0
   workers: int = 32
   overwrite: bool = False
+  format: str = "lafan"
+  """'lafan' (headerless m/quat/rad) or 'bones' (BONES-SEED cm/euler-deg/deg)."""
+  keep_list: str | None = None
+  """Optional text file of clip stems to convert (one per line)."""
 
 
-def _job(job: tuple[str, str, float, float]) -> str:
-  src, dst, input_fps, output_fps = job
+def _job(job: tuple[str, str, float, float, str]) -> str:
+  src, dst, input_fps, output_fps, fmt = job
   torch.set_num_threads(1)
-  np.savez(dst, **convert(src, input_fps, output_fps))
+  np.savez(dst, **convert(src, input_fps, output_fps, fmt))
   return dst
 
 
@@ -120,12 +151,16 @@ def main(args: Args) -> None:
   files = sorted(glob.glob(os.path.expanduser(args.input_glob), recursive=True))
   if not files:
     raise SystemExit(f"no files match {args.input_glob}")
+  if args.keep_list:
+    # One name per line: some BONES-SEED names contain spaces.
+    keep = set(open(args.keep_list).read().splitlines())
+    files = [f for f in files if os.path.splitext(os.path.basename(f))[0] in keep]
   os.makedirs(args.output_dir, exist_ok=True)
   jobs = []
   for src in files:
     dst = os.path.join(args.output_dir, os.path.splitext(os.path.basename(src))[0])
     if args.overwrite or not os.path.exists(dst + ".npz"):
-      jobs.append((src, dst + ".npz", args.input_fps, args.output_fps))
+      jobs.append((src, dst + ".npz", args.input_fps, args.output_fps, args.format))
   print(f"[INFO] {len(files)} files, {len(jobs)} to convert -> {args.output_dir}")
   with ProcessPoolExecutor(args.workers) as pool:
     for i, _ in enumerate(pool.map(_job, jobs, chunksize=8), 1):
