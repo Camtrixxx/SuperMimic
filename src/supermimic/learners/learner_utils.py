@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import functools
+import math
 from collections.abc import Callable, Iterable, Sequence
 
 import torch
@@ -33,7 +34,70 @@ def build_optimizers(
   )
   if not hidden:
     return [adam]
-  return [adam, torch.optim.Muon(hidden, lr=lr, adjust_lr_fn="match_rms_adamw")]
+  return [
+    adam,
+    ScheduledMuon(hidden, lr=lr, device=device, adjust_lr_fn="match_rms_adamw"),
+  ]
+
+
+class ScheduledMuon(torch.optim.Muon):
+  """``torch.optim.Muon`` whose learning rate lives in a device tensor
+  (``group["lr_t"]``), so a CUDA-graph-captured step follows in-place changes.
+
+  repro: torch's Muon converts ``lr`` to a Python scalar on every step, which
+  freezes it at capture time and makes LR schedules a silent no-op. Same math as
+  ``torch.optim._muon._single_tensor_muon``.
+  """
+
+  def __init__(self, params, lr: float, device: str | torch.device = "cpu", **kw):
+    super().__init__(params, lr=lr, **kw)
+    for group in self.param_groups:
+      group["lr_t"] = torch.tensor(float(lr), device=device)
+
+  @torch.no_grad()
+  def step(self, closure=None):  # noqa: D102
+    from torch.optim._muon import _adjust_lr, _zeropower_via_newtonschulz
+
+    assert closure is None
+    for group in self.param_groups:
+      lr_t, wd, mom = group["lr_t"], group["weight_decay"], group["momentum"]
+      for p in group["params"]:
+        if p.grad is None:
+          continue
+        state = self.state[p]
+        if "momentum_buffer" not in state:
+          state["momentum_buffer"] = torch.zeros_like(p.grad)
+        buf = state["momentum_buffer"]
+        buf.lerp_(p.grad, 1 - mom)
+        update = p.grad.lerp(buf, mom) if group["nesterov"] else buf
+        update = _zeropower_via_newtonschulz(
+          update, group["ns_coefficients"], group["ns_steps"], group["eps"]
+        )
+        ratio = _adjust_lr(1.0, group["adjust_lr_fn"], p.shape)
+        p.mul_(1 - lr_t * wd)
+        p.sub_(update * (lr_t * ratio))
+
+
+def set_lr_scale(optimizers: Iterable[torch.optim.Optimizer], scale: float) -> None:
+  """Scale every optimizer's LR to ``base_lr * scale`` in place (graph-safe)."""
+  for opt in optimizers:
+    for group in opt.param_groups:
+      base = group.setdefault("base_lr", float(group["lr"]))
+      key = "lr_t" if "lr_t" in group else "lr"
+      if torch.is_tensor(group[key]):
+        group[key].fill_(base * scale)
+      else:
+        raise RuntimeError(f"{type(opt).__name__} lr is not a tensor; cannot schedule")
+
+
+def lr_scale(step: int, schedule: str, decay_steps: int, final_ratio: float) -> float:
+  """Paper Table A.5: cosine decay to ``final_ratio`` over ``decay_steps``, then
+  constant. ``schedule='constant'`` keeps the official repo's behaviour."""
+  if schedule == "constant":
+    return 1.0
+  assert schedule == "cosine", schedule
+  t = min(step, decay_steps) / decay_steps
+  return final_ratio + (1 - final_ratio) * 0.5 * (1 + math.cos(math.pi * t))
 
 
 def _optimize_step(
@@ -69,7 +133,10 @@ def graph_state(
   for optimizer in optimizers:
     state += [t for s in optimizer.state.values() for t in s.values()]
     state += [
-      group["lr"] for group in optimizer.param_groups if torch.is_tensor(group["lr"])
+      group[k]
+      for group in optimizer.param_groups
+      for k in ("lr", "lr_t")
+      if k in group and torch.is_tensor(group[k])
     ]
   return state
 

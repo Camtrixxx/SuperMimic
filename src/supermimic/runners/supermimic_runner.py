@@ -23,6 +23,7 @@ from supermimic.learners.policy_learner import (
   BpttPolicyLearner,
   BpttPolicyLearnerCfg,
 )
+from supermimic.learners.learner_utils import lr_scale, set_lr_scale
 from supermimic.learners.wm_learner import WorldModelLearner, WorldModelLearnerCfg
 from supermimic.models import Dynamics, MultiEncoderAE, build_mlp
 from supermimic.replay_buffer import FieldSpec, ReplayBuffer
@@ -92,6 +93,12 @@ class SuperMimicRunnerCfg(BaseRunnerCfg):
   train.py resolves this into the motion command's cfg before the env is built
   ('return' drives mjlab's 'external' mode)."""
   return_sampler: ReturnSamplerCfg = field(default_factory=ReturnSamplerCfg)
+  lr_schedule: Literal["constant", "cosine"] = "constant"
+  """repro: 'cosine' = paper Table A.5 (decay to ``lr_final_ratio`` over
+  ``lr_decay_iters``, then constant), applied to WM, actor and critic.
+  'constant' is the official repo's behaviour."""
+  lr_decay_iters: int = 250_000
+  lr_final_ratio: float = 0.03
 
 
 @dataclass
@@ -670,6 +677,10 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
     for actor_td in actor_inputs:
       self.policy_learner.actor.update_normalization(actor_td)
 
+  def _all_optimizers(self) -> list[torch.optim.Optimizer]:
+    opts = [*self.world_model_learner.optimizers, *self.policy_learner.actor_optimizers]
+    return opts + list(getattr(self.policy_learner, "critic_optimizers", []))
+
   def run(self) -> None:
     log_dir = self._create_log_dir()
     self._init_wandb(log_dir)
@@ -699,6 +710,13 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
 
     for step in range(self.cfg.max_iterations):
       num_collected_steps += self.step()
+
+      if self.cfg.lr_schedule != "constant":
+        scale = lr_scale(
+          step, self.cfg.lr_schedule, self.cfg.lr_decay_iters, self.cfg.lr_final_ratio
+        )
+        set_lr_scale(self._all_optimizers(), scale)
+        loss_dict["Perf/lr_scale"] = torch.tensor(scale, device=self.device)
 
       for _ in range(should_train(step)):
         if self.replay_buffer.num_transitions < self.cfg.wm.horizon:

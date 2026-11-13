@@ -20,10 +20,12 @@ from __future__ import annotations
 import glob
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 
 import mjlab.tasks  # noqa: F401
+import numpy as np
 import torch
 import tyro
 from mjlab.envs import ManagerBasedRlEnv
@@ -53,6 +55,16 @@ class EvalConfig:
   max_envs: int = 4096
   device: str | None = None
   output: str | None = None
+  shard: int = 0
+  """Evaluate chunks shard, shard+num_shards, ... (one process per GPU)."""
+  num_shards: int = 1
+  sort_by_length: bool = False
+  """Group similar-length clips into chunks (use for large libraries)."""
+
+
+def _clip_len(path: str) -> int:
+  with np.load(path) as z:
+    return int(z["joint_pos"].shape[0])
 
 
 def _resolve_files(spec: str) -> list[str]:
@@ -217,10 +229,18 @@ def main(cfg: EvalConfig) -> None:
       }
     ]
   per_state: list[list[dict]] = [[] for _ in states]
-  for lo in range(0, len(ev.files), cfg.max_envs):
-    chunk = ev.files[lo : lo + cfg.max_envs]
+  files = ev.files
+  if cfg.sort_by_length:
+    # Similar-length clips per chunk, so a chunk is not held open by one long clip.
+    with ThreadPoolExecutor(32) as pool:
+      lengths = list(pool.map(_clip_len, files))
+    files = [f for _, f in sorted(zip(lengths, files, strict=True))]
+  chunks = [files[lo : lo + cfg.max_envs] for lo in range(0, len(files), cfg.max_envs)]
+  chunks = chunks[cfg.shard :: cfg.num_shards]
+  for k, chunk in enumerate(chunks):
     for i, rows in enumerate(ev.run_chunk(chunk, states)):
       per_state[i] += rows
+    print(f"[INFO] shard {cfg.shard}: chunk {k + 1}/{len(chunks)} done", flush=True)
   report = []
   for st, rows in zip(states, per_state, strict=True):
     entry = {
