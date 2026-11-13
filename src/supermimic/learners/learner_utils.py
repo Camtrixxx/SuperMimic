@@ -7,6 +7,7 @@ import math
 from collections.abc import Callable, Iterable, Sequence
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 from tensordict import TensorDict
 
@@ -100,6 +101,35 @@ def lr_scale(step: int, schedule: str, decay_steps: int, final_ratio: float) -> 
   return final_ratio + (1 - final_ratio) * 0.5 * (1 + math.cos(math.pi * t))
 
 
+def _allreduce_grads(params: list[torch.Tensor]) -> None:
+  """repro: data parallel (paper Table A.5: "gradients averaged across GPUs").
+  One flat all-reduce, before clipping, so every rank takes the same step.
+  No-op without an initialized multi-rank process group. Capture-safe (NCCL
+  collectives can be recorded in CUDA graphs)."""
+  if not (dist.is_available() and dist.is_initialized()) or dist.get_world_size() == 1:
+    return
+  grads = [p.grad for p in params if p.grad is not None]
+  if not grads:
+    return
+  flat = torch.cat([g.reshape(-1) for g in grads])
+  dist.all_reduce(flat)
+  flat.div_(dist.get_world_size())
+  offset = 0
+  for g in grads:
+    n = g.numel()
+    g.copy_(flat[offset : offset + n].view_as(g))
+    offset += n
+
+
+def broadcast_module(*modules: nn.Module) -> None:
+  """Copy rank 0's parameters and buffers to every rank."""
+  if not (dist.is_available() and dist.is_initialized()) or dist.get_world_size() == 1:
+    return
+  for m in modules:
+    for t in [*m.parameters(), *m.buffers()]:
+      dist.broadcast(t.data, src=0)
+
+
 def _optimize_step(
   optimizers: Sequence[torch.optim.Optimizer],
   loss: torch.Tensor,
@@ -111,6 +141,9 @@ def _optimize_step(
   for optimizer in optimizers:
     optimizer.zero_grad(set_to_none=True)
   loss.backward()
+  if params is not None:
+    params = list(params)
+    _allreduce_grads(params)
   grad_norm = None
   if params is not None and max_norm is not None:
     # Don't set error_if_nonfinite=True: it forces a per-step CPU<->GPU sync.

@@ -5,8 +5,17 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-import mjlab.tasks  # noqa: F401
-import tyro
+# repro: under torchrun, pin each rank to one GPU *before* anything imports
+# CUDA/Warp; the rank then addresses it as cuda:0.
+if int(os.environ.get("WORLD_SIZE", "1")) > 1:
+  _local = int(os.environ["LOCAL_RANK"])
+  _vis = os.environ.get("CUDA_VISIBLE_DEVICES")
+  _gpus = _vis.split(",") if _vis else [str(i) for i in range(int(os.environ["WORLD_SIZE"]))]
+  os.environ["CUDA_VISIBLE_DEVICES"] = _gpus[_local]
+
+import mjlab.tasks  # noqa: F401, E402
+import torch  # noqa: E402
+import tyro  # noqa: E402
 from mjlab.envs import ManagerBasedRlEnvCfg
 from mjlab.tasks.registry import list_tasks, load_env_cfg
 
@@ -39,7 +48,19 @@ class TrainConfig:
     )
 
 
+def _init_distributed() -> tuple[int, int]:
+  """repro: torchrun data parallel (GPU already pinned at import time)."""
+  world = int(os.environ.get("WORLD_SIZE", "1"))
+  if world == 1:
+    return 0, 1
+  import torch.distributed as dist
+
+  dist.init_process_group("nccl", device_id=torch.device("cuda:0"))
+  return dist.get_rank(), world
+
+
 def main() -> None:
+  rank, world = _init_distributed()
   # Parse first argument to choose the task.
   all_tasks = list_tasks()
   chosen_task, remaining_args = tyro.cli(
@@ -81,6 +102,11 @@ def main() -> None:
   args.env.commands["motion"].sampling_mode = (
     "external" if args.runner.sampling_mode == "return" else args.runner.sampling_mode
   )
+
+  if world > 1:
+    # Different simulator data per rank; models are synced by the runner.
+    args.env.seed = (args.env.seed or 0) + rank
+    args.runner.rank, args.runner.world_size = rank, world
 
   env = create_env(args.env, args.num_envs, device)
 

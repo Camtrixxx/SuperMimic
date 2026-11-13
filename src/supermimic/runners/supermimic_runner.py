@@ -23,7 +23,7 @@ from supermimic.learners.policy_learner import (
   BpttPolicyLearner,
   BpttPolicyLearnerCfg,
 )
-from supermimic.learners.learner_utils import lr_scale, set_lr_scale
+from supermimic.learners.learner_utils import broadcast_module, lr_scale, set_lr_scale
 from supermimic.learners.wm_learner import WorldModelLearner, WorldModelLearnerCfg
 from supermimic.models import Dynamics, MultiEncoderAE, build_mlp
 from supermimic.replay_buffer import FieldSpec, ReplayBuffer
@@ -99,6 +99,9 @@ class SuperMimicRunnerCfg(BaseRunnerCfg):
   'constant' is the official repo's behaviour."""
   lr_decay_iters: int = 250_000
   lr_final_ratio: float = 0.03
+  rank: int = 0
+  """repro: set by train.py under torchrun; only rank 0 logs and saves."""
+  world_size: int = 1
 
 
 @dataclass
@@ -260,7 +263,12 @@ class BaseRunner[CfgT: BaseRunnerCfg]:
 
     self._init_common()
     self._init_policy()
-
+    if cfg.world_size > 1:
+      # repro: identical initial weights/normalizers on every rank.
+      critic = getattr(self.policy_learner, "critic", None)
+      mods = [self._dynamics, self.policy_learner.actor]
+      broadcast_module(*mods, *([critic] if critic is not None else []))
+    self._is_main = cfg.rank == 0
     self.logger = Logger(
       run_name=cfg.run_name,
       num_envs=env.num_envs,
@@ -677,13 +685,34 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
     for actor_td in actor_inputs:
       self.policy_learner.actor.update_normalization(actor_td)
 
+  def _check_ranks_in_sync(self, step: int) -> None:
+    """repro: data-parallel sanity — all ranks must hold the same weights."""
+    import torch.distributed as dist
+
+    mods = [self._dynamics, self.policy_learner.actor]
+    sig = torch.stack(
+      [
+        torch.stack([t.double().sum() for t in [*m.parameters(), *m.buffers()]]).sum()
+        for m in mods
+      ]
+    )
+    out = [torch.zeros_like(sig) for _ in range(self.cfg.world_size)]
+    dist.all_gather(out, sig)
+    spread = (torch.stack(out) - sig).abs().max().item()
+    if self._is_main:
+      tag = "OK" if spread < 1e-6 * (sig.abs().max().item() + 1) else "DIVERGED"
+      print(f"[DDP] step {step}: weight checksum spread {spread:.3e} {tag}", flush=True)
+
   def _all_optimizers(self) -> list[torch.optim.Optimizer]:
     opts = [*self.world_model_learner.optimizers, *self.policy_learner.actor_optimizers]
     return opts + list(getattr(self.policy_learner, "critic_optimizers", []))
 
   def run(self) -> None:
-    log_dir = self._create_log_dir()
-    self._init_wandb(log_dir)
+    if self._is_main:
+      log_dir = self._create_log_dir()
+      self._init_wandb(log_dir)
+    else:
+      log_dir = Path("/dev/null")
 
     self.env.reset()
     self._seed_sim_history()
@@ -739,6 +768,8 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
         loss_dict.update(policy_logs)
 
       if step % self.cfg.log_interval == 0:
+        if self.cfg.world_size > 1 and step % (self.cfg.log_interval * 100) == 0:
+          self._check_ranks_in_sync(step)
         elapsed_time = time.time() - start_time
         total_train_time = wm_learn_time + policy_learn_time
         collect_time = elapsed_time - total_train_time
@@ -751,7 +782,7 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
           policy_learn_time=policy_learn_time,
           loss_dict=loss_dict,
           num_collected_steps=num_collected_steps,
-        )
+        ) if self._is_main else None
 
         log_count += 1
         start_time = time.time()
@@ -759,7 +790,7 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
         policy_learn_time = 0
         num_collected_steps = 0
 
-      if step % self.cfg.save_interval == 0:
+      if step % self.cfg.save_interval == 0 and self._is_main:
         assert wandb.run is not None  # _init_wandb ran before the loop
         # The previous version must be logged before its files are overwritten.
         if upload is not None:
@@ -802,4 +833,5 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
         upload = uploader.submit(log_model_artifact, checkpoint_files)
 
     uploader.shutdown()
-    self._cleanup()
+    if self._is_main:
+      self._cleanup()
