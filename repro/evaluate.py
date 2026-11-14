@@ -53,6 +53,13 @@ class EvalConfig:
   every: int = 1
   """With --all-snapshots, evaluate every n-th snapshot."""
   max_envs: int = 4096
+  action_noise: float = 0.0
+  """Diagnostic only (not F.1): Gaussian std added to actions, as in training
+  data collection (0.1)."""
+  obs_noise: bool = False
+  """Diagnostic only (not F.1): add the training sensor noise to observations."""
+  subset_every: int = 1
+  """Diagnostic: keep every n-th clip."""
   device: str | None = None
   output: str | None = None
   shard: int = 0
@@ -103,7 +110,7 @@ class Evaluator:
     raw = json.loads((run_dir / "run_config.json").read_text())
     self.runner_cfg = load_runner_cfg(raw)
     check_representation_matches(cfg.task_id, self.runner_cfg.representation)
-    self.files = _resolve_files(cfg.motion_file)
+    self.files = _resolve_files(cfg.motion_file)[:: cfg.subset_every]
     self.run_dir = run_dir
 
   def _build(self, files: list[str]):
@@ -158,7 +165,7 @@ class Evaluator:
           sim_ctx,
           aux_state=aux,
           sim_actor_obs=obs["actor"].to(self.device) if proprio else None,
-          noisy=False,
+          noisy=self.cfg.obs_noise,
         )
         if history is None:
           history = sensor.unsqueeze(1).repeat(1, hist_len, 1)
@@ -170,6 +177,8 @@ class Evaluator:
           for ts in active_specs
         }
         actions = actor(build_actor_obs_td(goals, history))
+        if self.cfg.action_noise > 0:
+          actions = actions + torch.randn_like(actions) * self.cfg.action_noise
         _, rew, dones, extras = env.step(actions)
         ret += torch.where(alive, rew.to(self.device), 0.0)
         tm = uw.termination_manager

@@ -99,6 +99,14 @@ class SuperMimicRunnerCfg(BaseRunnerCfg):
   'constant' is the official repo's behaviour."""
   lr_decay_iters: int = 250_000
   lr_final_ratio: float = 0.03
+  clean_action_frac: float = 0.0
+  """repro: fraction of sim envs (fixed by env index) that execute the
+  deterministic action, without collection noise. Gives the world model data on
+  the noise-free action distribution the deployed policy uses. 0 = official."""
+  noise_final: float | None = None
+  """repro: if set, collection-noise std decays linearly from
+  ``policy.noise`` to this value over ``noise_decay_iters``. None = constant."""
+  noise_decay_iters: int = 250_000
   rank: int = 0
   """repro: set by train.py under torchrun; only rank 0 logs and saves."""
   world_size: int = 1
@@ -269,6 +277,7 @@ class BaseRunner[CfgT: BaseRunnerCfg]:
       mods = [self._dynamics, self.policy_learner.actor]
       broadcast_module(*mods, *([critic] if critic is not None else []))
     self._is_main = cfg.rank == 0
+    self._iteration = 0
     self.logger = Logger(
       run_name=cfg.run_name,
       num_envs=env.num_envs,
@@ -629,6 +638,18 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
       device=self.device,
     )
 
+  def _collection_noise_std(self) -> torch.Tensor | float:
+    """repro: per-env collection-noise std (see clean_action_frac / noise_final)."""
+    base = self.policy_learner.cfg.noise
+    if self.cfg.noise_final is not None:
+      t = min(self._iteration, self.cfg.noise_decay_iters) / self.cfg.noise_decay_iters
+      base = base + (self.cfg.noise_final - base) * t
+    if self.cfg.clean_action_frac <= 0:
+      return base
+    n = self.env.num_envs
+    clean = torch.arange(n, device=self.device) < round(n * self.cfg.clean_action_frac)
+    return torch.where(clean, 0.0, base).unsqueeze(-1)
+
   def step(self) -> int:
     with torch.inference_mode():
       obs = self.env.get_observations()
@@ -646,7 +667,7 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
       )
 
       actions = self.policy_learner.actor(actor_td)
-      actions = actions + torch.randn_like(actions) * self.policy_learner.cfg.noise
+      actions = actions + torch.randn_like(actions) * self._collection_noise_std()
 
       extra_fields = {"sim_ctx": sim_ctx}
       if self._stores_actor_obs:
@@ -738,6 +759,7 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
     upload: Future | None = None
 
     for step in range(self.cfg.max_iterations):
+      self._iteration = step
       num_collected_steps += self.step()
 
       if self.cfg.lr_schedule != "constant":
