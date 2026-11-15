@@ -113,8 +113,10 @@ class Evaluator:
     self.files = _resolve_files(cfg.motion_file)[:: cfg.subset_every]
     self.run_dir = run_dir
 
-  def _build(self, files: list[str]):
+  def _build(self, files: list[str], drop_terminations: tuple[str, ...] = ()):
     env_cfg = _eval_env_cfg(self.cfg.task_id, files)
+    for name in drop_terminations:
+      env_cfg.terminations.pop(name, None)
     env_cfg.scene.num_envs = len(files)
     env = RslRlVecEnvWrapper(ManagerBasedRlEnv(cfg=env_cfg, device=self.device))
     wm = build_world_model(self.runner_cfg, env, self.device)
