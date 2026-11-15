@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import json
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -107,6 +108,9 @@ class SuperMimicRunnerCfg(BaseRunnerCfg):
   """repro: if set, collection-noise std decays linearly from
   ``policy.noise`` to this value over ``noise_decay_iters``. None = constant."""
   noise_decay_iters: int = 250_000
+  use_critic: bool = True
+  """repro: False = critic-free BPTT ablation (the CLI cannot switch the
+  ``policy`` union because mjlab's tyro flags avoid subcommands)."""
   rank: int = 0
   """repro: set by train.py under torchrun; only rank 0 logs and saves."""
   world_size: int = 1
@@ -582,6 +586,17 @@ class SuperMimicRunner(BaseRunner[SuperMimicRunnerCfg]):
       self.wm_env.reset = torch.compile(self.wm_env.reset)
 
     self._configure_reset_sampling()
+
+    if not self.cfg.use_critic and isinstance(policy_cfg, ActorCriticPolicyLearnerCfg):
+      # repro: critic-free ablation (paper Fig. 4b,c): plain H-step BPTT with the
+      # official BpttPolicyLearnerCfg defaults for fields AC doesn't share
+      # (gamma=1.0, the H-step reward sum).
+      shared = {
+        f.name: getattr(policy_cfg, f.name)
+        for f in dataclasses.fields(BpttPolicyLearnerCfg)
+        if f.name != "gamma"
+      }
+      policy_cfg = BpttPolicyLearnerCfg(**shared)
 
     if isinstance(policy_cfg, ActorCriticPolicyLearnerCfg):
       self.policy_learner = ActorCriticPolicyLearner(
