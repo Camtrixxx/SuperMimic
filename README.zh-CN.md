@@ -5,7 +5,7 @@
 本仓库在 8×A100-40GB 上独立复现了 [SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World Model](https://arxiv.org/abs/2610.28480)（Liao 等，CoRL 2026）。
 
 - 代码基于官方实现 [HybridRobotics/supermimic](https://github.com/HybridRobotics/supermimic)（Apache-2.0）。
-- 第一个提交导入了官方代码（`abc124c`），之后的提交都是我们的修改。
+- 第一个提交导入了官方代码（上游提交 `abc124c`），之后的提交都是我们的修改。
 - 官方原始 README 见 [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md)，全部文档见 [docs/](docs/README.md)。
 
 本项目与论文作者无关。

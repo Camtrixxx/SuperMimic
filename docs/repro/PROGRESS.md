@@ -73,7 +73,7 @@ export MUJOCO_GL=disable WANDB_MODE=offline UV_LINK_MODE=copy
 
 ### Formal Runs
 - Seeds 0, 1, 2 on GPUs 0, 1, 2 respectively
-- Seeds 0 and 1 initially launched in the same second and shared a log dir, overwriting each other's checkpoints. Their logs are marked INVALID and kept; both were relaunched at 18:46 after the fix (commit 5878dcb). Seed 2 was unaffected and started at 18:13.
+- Seeds 0 and 1 initially launched in the same second and shared a log dir, overwriting each other's checkpoints. Their logs are marked INVALID and kept; both were relaunched at 18:46 after the fix ("unique per-run log dirs"). Seed 2 was unaffected and started at 18:13.
 - `repro/watch_eval.sh` evaluates each snapshot on GPU 3 as it is written (every 2k iterations).
 - At 18:56 seeds 0 and 1 were killed by accident: they had been launched from inside a background tool task, and stopping that task (a hung wait loop) killed its child processes. Logs kept as INVALID_killed_*. Relaunched at 19:16 with `setsid` (log dirs 2026-11-12_19-16-17_lafan1_s{0,1}). All long jobs are now started with setsid.
 - One eval watcher per seed: GPU 3 → s0, GPU 4 → s1, GPU 5 → s2. A single watcher on GPU 3 could not keep up (5 min per eval vs 3 snapshots per 7 min).

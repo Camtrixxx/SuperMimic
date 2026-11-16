@@ -2,7 +2,7 @@ English | [中文](README.zh-CN.md)
 
 # SuperMimic — reproduction
 
-An independent reproduction of [SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World Model](https://arxiv.org/abs/2610.28480) (Liao et al., CoRL 2026) on 8×A100-40GB, built on the official code ([HybridRobotics/supermimic](https://github.com/HybridRobotics/supermimic), Apache-2.0). The first commit imports the official code (`abc124c`); later commits are our changes. The original README is in [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md); all documents are listed in [docs/](docs/README.md).
+An independent reproduction of [SuperMimic: Scaling Humanoid Whole-Body Control with One Differentiable World Model](https://arxiv.org/abs/2610.28480) (Liao et al., CoRL 2026) on 8×A100-40GB, built on the official code ([HybridRobotics/supermimic](https://github.com/HybridRobotics/supermimic), Apache-2.0). The first commit imports the official code (upstream commit `abc124c`); later commits are our changes. The original README is in [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md); all documents are listed in [docs/](docs/README.md).
 
 Not affiliated with the paper's authors.
 
