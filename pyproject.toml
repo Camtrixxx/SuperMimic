@@ -66,6 +66,10 @@ dev = [
 # newer drivers. Linux x86_64 only.
 [tool.uv]
 override-dependencies = [
+  # mjviser 0.0.17 pulls mujoco-core 4.x, whose files overwrite mujoco 3.16's in
+  # the same "mujoco" package dir (on some installs libmujoco.so.3.16.0 is gone
+  # and every mujoco import fails). 0.0.16 is what mjlab_research@dd51a9f locks.
+  "mjviser==0.0.16",
   "warp-lang==1.19.0+cu12 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
   "warp-lang>=1.15.0 ; sys_platform != 'linux' or platform_machine != 'x86_64'",
 ]
