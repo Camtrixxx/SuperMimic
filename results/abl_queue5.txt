@@ -1,0 +1,5 @@
+[queue gpu5] 11:04 start abl_H64_nocritic (--runner.policy.horizon 64 --runner.use-critic False)
+[queue gpu5] 15:41 done abl_H64_nocritic: it=40000 t=3.1838758046097224 ret=0.8806 (frame-w 0.8796) failed=0/40
+[queue gpu5] 15:41 start abl_H8_nocritic (--runner.policy.horizon 8 --runner.use-critic False)
+[queue gpu5] 17:18 done abl_H8_nocritic: it=40000 t=1.5310959679550595 ret=0.0109 (frame-w 0.0101) failed=40/40
+[queue gpu5] 17:18 queue finished

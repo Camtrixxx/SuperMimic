@@ -1,0 +1,50 @@
+[fix_1gpu_clean50] it=48000 t=3.0343917358583874 clips=129543 ret=0.9401 failed=114
+[fix_1gpu_clean50]    side rolls                       8/22
+[fix_1gpu_clean50]    flips (360/180/90)               9/44
+[fix_1gpu_clean50]    fire-in-the-hole turns           2/20
+[fix_1gpu_clean50]    crossed legs                     8/18
+[fix_1gpu_clean50]    lying / resting / standing up    30/64
+[fix_1gpu_clean50]    broad jumps                      0/24
+[fix_1gpu_clean50]    dance routine                    0/3573
+[fix_1gpu_noisedecay] it=48000 t=3.0320349008507197 clips=129543 ret=0.9406 failed=121
+[fix_1gpu_noisedecay]    side rolls                       8/22
+[fix_1gpu_noisedecay]    flips (360/180/90)               12/44
+[fix_1gpu_noisedecay]    fire-in-the-hole turns           8/20
+[fix_1gpu_noisedecay]    crossed legs                     8/18
+[fix_1gpu_noisedecay]    lying / resting / standing up    19/64
+[fix_1gpu_noisedecay]    broad jumps                      0/24
+[fix_1gpu_noisedecay]    dance routine                    0/3573
+[fix_2gpu_clean50] it=48000 t=3.115691868662834 clips=129543 ret=0.9502 failed=68
+[fix_2gpu_clean50]    side rolls                       6/22
+[fix_2gpu_clean50]    flips (360/180/90)               0/44
+[fix_2gpu_clean50]    fire-in-the-hole turns           7/20
+[fix_2gpu_clean50]    crossed legs                     3/18
+[fix_2gpu_clean50]    lying / resting / standing up    18/64
+[fix_2gpu_clean50]    broad jumps                      0/24
+[fix_2gpu_clean50]    dance routine                    0/3573
+[3h evals done]
+[fix_1gpu_noisedecay] it=320000 t=19.96972604241636 clips=129543 ret=0.9644 failed=5
+[fix_1gpu_noisedecay]    side rolls                       0/22
+[fix_1gpu_noisedecay]    flips (360/180/90)               0/44
+[fix_1gpu_noisedecay]    fire-in-the-hole turns           1/20
+[fix_1gpu_noisedecay]    crossed legs                     1/18
+[fix_1gpu_noisedecay]    lying / resting / standing up    0/64
+[fix_1gpu_noisedecay]    broad jumps                      0/24
+[fix_1gpu_noisedecay]    dance routine                    0/3573
+[fix_1gpu_clean50] it=320000 t=20.06585436847475 clips=129543 ret=0.9610 failed=6
+[fix_1gpu_clean50]    side rolls                       0/22
+[fix_1gpu_clean50]    flips (360/180/90)               0/44
+[fix_1gpu_clean50]    fire-in-the-hole turns           0/20
+[fix_1gpu_clean50]    crossed legs                     1/18
+[fix_1gpu_clean50]    lying / resting / standing up    0/64
+[fix_1gpu_clean50]    broad jumps                      0/24
+[fix_1gpu_clean50]    dance routine                    0/3573
+[fix_2gpu_clean50] it=320000 t=20.599137933850287 clips=129543 ret=0.9674 failed=0
+[fix_2gpu_clean50]    side rolls                       0/22
+[fix_2gpu_clean50]    flips (360/180/90)               0/44
+[fix_2gpu_clean50]    fire-in-the-hole turns           0/20
+[fix_2gpu_clean50]    crossed legs                     0/18
+[fix_2gpu_clean50]    lying / resting / standing up    0/64
+[fix_2gpu_clean50]    broad jumps                      0/24
+[fix_2gpu_clean50]    dance routine                    0/3573
+[320k evals done]

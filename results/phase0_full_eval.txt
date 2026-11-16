@@ -1,0 +1,34 @@
+[night_official_const] it=144000 t=9.052923218342993 clips=129543 ret=0.3647 failed=109940
+[night_official_const]    side rolls                       20/22
+[night_official_const]    flips (360/180/90)               44/44
+[night_official_const]    fire-in-the-hole turns           5/20
+[night_official_const]    crossed legs                     18/18
+[night_official_const]    lying / resting / standing up    62/64
+[night_official_const]    broad jumps                      24/24
+[night_official_const]    dance routine                    3566/3573
+[night_clean20] it=144000 t=9.052518463929495 clips=129543 ret=0.9501 failed=28
+[night_clean20]    side rolls                       0/22
+[night_clean20]    flips (360/180/90)               1/44
+[night_clean20]    fire-in-the-hole turns           5/20
+[night_clean20]    crossed legs                     1/18
+[night_clean20]    lying / resting / standing up    3/64
+[night_clean20]    broad jumps                      0/24
+[night_clean20]    dance routine                    0/3573
+[night_clean50] it=144000 t=9.09684905992614 clips=129543 ret=0.9545 failed=34
+[night_clean50]    side rolls                       6/22
+[night_clean50]    flips (360/180/90)               0/44
+[night_clean50]    fire-in-the-hole turns           1/20
+[night_clean50]    crossed legs                     0/18
+[night_clean50]    lying / resting / standing up    4/64
+[night_clean50]    broad jumps                      0/24
+[night_clean50]    dance routine                    0/3573
+[night_noisedecay] it=144000 t=9.03917773756716 clips=129543 ret=0.9551 failed=16
+[night_noisedecay]    side rolls                       0/22
+[night_noisedecay]    flips (360/180/90)               2/44
+[night_noisedecay]    fire-in-the-hole turns           2/20
+[night_noisedecay]    crossed legs                     1/18
+[night_noisedecay]    lying / resting / standing up    0/64
+[night_noisedecay]    broad jumps                      0/24
+[night_noisedecay]    dance routine                    0/3573
+[phase0] done 11:04
+[phase1] launched 11:04

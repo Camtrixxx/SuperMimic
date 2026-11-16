@@ -1,0 +1,5 @@
+[queue gpu4] 11:04 start abl_H64_critic (--runner.policy.horizon 64)
+[queue gpu4] 16:05 done abl_H64_critic: it=40000 t=3.5676458285914525 ret=0.8771 (frame-w 0.8763) failed=0/40
+[queue gpu4] 16:05 start abl_H8_critic (--runner.policy.horizon 8)
+[queue gpu4] 19:05 done abl_H8_critic: it=40000 t=1.601335321797265 ret=0.5654 (frame-w 0.5887) failed=9/40
+[queue gpu4] 19:05 queue finished

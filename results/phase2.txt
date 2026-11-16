@@ -1,0 +1,30 @@
+17:18 start vel_distill on gpu5
+19:06 start vel_rl on gpu4
+19:56 start push tests on gpu6
+[push lafan_H32_critic]  speed  fell  settled    settle s (min/median/max)
+[push lafan_H32_critic]    0.5   0/8    8/8               0.82/1.18/1.86
+[push lafan_H32_critic]    1.0   0/8    8/8               1.12/1.94/3.32
+[push lafan_H32_critic]    2.0   0/8    8/8               1.70/2.93/3.50
+[push lafan_H32_critic]    3.0   0/8    8/8               2.76/4.04/6.60
+[push lafan_H32_critic]    4.0   5/8    3/8               4.04/4.38/7.02
+[push lafan_H32_nocritic]  speed  fell  settled    settle s (min/median/max)
+[push lafan_H32_nocritic]    0.5   0/8    8/8               0.70/1.40/2.76
+[push lafan_H32_nocritic]    1.0   0/8    8/8               1.44/2.60/6.72
+[push lafan_H32_nocritic]    2.0   0/8    8/8               2.32/3.71/5.54
+[push lafan_H32_nocritic]    3.0   3/8    5/8               3.12/4.72/5.24
+[push lafan_H32_nocritic]    4.0   8/8    0/8                            -
+[push bones_clean50_144k]  speed  fell  settled    settle s (min/median/max)
+[push bones_clean50_144k]    0.5   0/8    8/8               0.96/1.18/1.26
+[push bones_clean50_144k]    1.0   0/8    8/8               1.28/1.59/2.10
+[push bones_clean50_144k]    2.0   0/8    8/8               1.50/1.83/3.24
+[push bones_clean50_144k]    3.0   1/8    7/8               1.82/2.44/3.54
+[push bones_clean50_144k]    4.0   3/8    5/8               2.48/2.82/3.28
+23:01 done vel_distill (exit 0)
+00:43 done vel_rl (exit 0)
+[step vel_rl it0010000.pt] {"responses": 672, "median_rel_error": 0.05225538834929466, "commands_all_trials_fell": 0, "trials_fell": 0}
+[step vel_rl it0050000.pt] {"responses": 672, "median_rel_error": 0.028851421549916267, "commands_all_trials_fell": 0, "trials_fell": 0}
+[step vel_rl it0100000.pt] {"responses": 672, "median_rel_error": 0.030234807170927525, "commands_all_trials_fell": 0, "trials_fell": 0}
+[step vel_distill it0010000.pt] {"responses": 672, "median_rel_error": 0.42975255846977234, "commands_all_trials_fell": 0, "trials_fell": 3}
+[step vel_distill it0050000.pt] {"responses": 672, "median_rel_error": 0.4171849340200424, "commands_all_trials_fell": 0, "trials_fell": 38}
+[step vel_distill it0100000.pt] {"responses": 672, "median_rel_error": 0.35463160276412964, "commands_all_trials_fell": 4, "trials_fell": 48}
+00:49 phase2 finished

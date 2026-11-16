@@ -1,0 +1,7 @@
+[queue gpu6] 11:04 start abl_H16_critic (--runner.policy.horizon 16)
+[queue gpu6] 14:25 done abl_H16_critic: it=40000 t=1.903842331369718 ret=0.7046 (frame-w 0.7036) failed=8/40
+[queue gpu6] 14:25 start abl_H16_nocritic (--runner.policy.horizon 16 --runner.use-critic False)
+[queue gpu6] 16:18 done abl_H16_nocritic: it=40000 t=1.7620045042037964 ret=0.0231 (frame-w 0.0216) failed=40/40
+[queue gpu6] 16:18 start abl_H32_nocritic (--runner.use-critic False)
+[queue gpu6] 19:56 done abl_H32_nocritic: it=40000 t=2.2415388611952465 ret=0.8730 (frame-w 0.8722) failed=1/40
+[queue gpu6] 19:56 queue finished

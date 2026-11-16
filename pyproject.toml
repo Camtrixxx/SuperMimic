@@ -44,10 +44,15 @@ dev = [
     "pytest>=9.0.2",
 ]
 
-# repro: host driver is R550 (CUDA 12.4). PyPI warp-lang>=1.18 is built with
-# CUDA 13.4 and needs R580+, so use NVIDIA's +cu12 release wheel (R525+).
+# repro: NVIDIA's CUDA-12 build of warp-lang. PyPI warp-lang>=1.18 is built with
+# CUDA 13.4 and needs driver R580+; this wheel needs only R525+ and also works on
+# newer drivers. Linux x86_64 only.
 [tool.uv]
-override-dependencies = ["warp-lang==1.19.0+cu12"]
+override-dependencies = [
+  "warp-lang==1.19.0+cu12 ; sys_platform == 'linux' and platform_machine == 'x86_64'",
+  "warp-lang>=1.15.0 ; sys_platform != 'linux' or platform_machine != 'x86_64'",
+]
 
 [tool.uv.sources.warp-lang]
-path = "../../wheels/warp_lang-1.19.0+cu12-py3-none-manylinux_2_28_x86_64.whl"
+url = "https://github.com/NVIDIA/warp/releases/download/v1.19.0/warp_lang-1.19.0%2Bcu12-py3-none-manylinux_2_28_x86_64.whl"
+marker = "sys_platform == 'linux' and platform_machine == 'x86_64'"
