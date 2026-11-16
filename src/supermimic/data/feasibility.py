@@ -1,3 +1,5 @@
+# pyright: reportAttributeAccessIssue=false
+# (mujoco is a compiled extension without type stubs)
 """Paper Appendix E feasibility filter for G1 motion clips (50 Hz npz).
 
 Per frame, MuJoCo forward kinematics on the G1 model plus a z=0 floor gives
@@ -13,7 +15,7 @@ The paper does not quantify "upright / standing height / nearly stationary";
 the gates below are our choice (see STANDING_* constants).
 
 Usage:
-  uv run repro/feasibility.py --npz-glob 'data/.../npz/*.npz' --out feas.parquet
+  uv run sm-feasibility --npz-glob 'data/.../npz/*.npz' --out feas.parquet
 """
 
 from __future__ import annotations
@@ -79,8 +81,8 @@ def frame_signals(clip: dict) -> dict[str, np.ndarray]:
   """Per-frame z_min, foot distances, pelvis height / up-z / speed."""
   if _MODEL is None:
     _build()
+  assert _MODEL is not None and _FOOT_GEOMS is not None and _QADR is not None
   m, (lf, rf), qadr = _MODEL, _FOOT_GEOMS, _QADR
-  assert m is not None and qadr is not None
   d = mujoco.MjData(m)
   pos, quat, q = clip["root_pos_w"], clip["root_quat_w"], clip["joint_pos"]
   n = q.shape[0]
@@ -141,14 +143,19 @@ def judge(sig: dict[str, np.ndarray]) -> dict:
     "zmin_max_run_s": _longest_run(zmin > ELEVATED_Z) / FPS,
     "float_run_s": _longest_run(both_up & standing) / FPS,
     # stance calibration: lowest foot while standing (paper: -0.004 +- 0.004 m)
-    "stance_foot_med": float(np.median(lowest_foot[standing])) if standing.any() else np.nan,
+    "stance_foot_med": float(np.median(lowest_foot[standing]))
+    if standing.any()
+    else np.nan,
     "frames": int(zmin.shape[0]),
   }
 
 
 def _job(path: str) -> dict:
   clip = dict(np.load(path))
-  return {"clip": os.path.splitext(os.path.basename(path))[0], **judge(frame_signals(clip))}
+  return {
+    "clip": os.path.splitext(os.path.basename(path))[0],
+    **judge(frame_signals(clip)),
+  }
 
 
 @dataclass
@@ -172,5 +179,10 @@ def main(a: Args) -> None:
   print(df[["elevated", "penetration", "floating", "infeasible"]].sum().to_string())
 
 
-if __name__ == "__main__":
+def cli() -> None:
+  """Console entry point ``sm-feasibility``."""
   main(tyro.cli(Args))
+
+
+if __name__ == "__main__":
+  cli()

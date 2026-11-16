@@ -12,14 +12,12 @@ Our choices where the paper is silent: the standing start is frame 0 of a
 BONES-SEED standing-idle clip held static; the 4 trials differ by the training
 sensor noise (friction 1.0, no other DR); a fall uses the Table A.6 rule.
 
-Usage: uv run repro/velocity_step_test.py --run-dir <velocity run> [--snapshot ...]
+Usage: uv run sm-velocity-step-test --run-dir <velocity run> [--snapshot ...]
 """
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -28,6 +26,8 @@ import torch
 import tyro
 from tensordict import TensorDict
 
+from supermimic.evaluation.tracking import EvalConfig, Evaluator
+from supermimic.paths import data_path, require
 from supermimic.velocity import (
   CMD_HI,
   CMD_LO,
@@ -35,14 +35,6 @@ from supermimic.velocity import (
   fall_error,
   measured_cmd_space,
 )
-
-_spec = importlib.util.spec_from_file_location(
-  "repro_evaluate", Path(__file__).with_name("evaluate.py")
-)
-assert _spec is not None and _spec.loader is not None
-ev_mod = importlib.util.module_from_spec(_spec)
-sys.modules[_spec.name] = ev_mod
-_spec.loader.exec_module(ev_mod)
 
 DT, HOLD_S, TAIL_S, TRIALS, GRID = 0.02, 5.0, 2.0, 4, 15
 PLANES = ((0, 1), (0, 2), (1, 2))
@@ -68,7 +60,11 @@ def make_standing(src: str, out: str, seconds: float = HOLD_S + 2.0) -> str:
   tp = {k: d[k] for k in ("fps", "joint_names")}
   for k in ("joint_pos", "root_pos_w", "root_quat_w"):
     tp[k] = np.repeat(d[k][:1], n, 0)
-  for k, w in (("joint_vel", d["joint_vel"].shape[1]), ("root_lin_vel_w", 3), ("root_ang_vel_w", 3)):
+  for k, w in (
+    ("joint_vel", d["joint_vel"].shape[1]),
+    ("root_lin_vel_w", 3),
+    ("root_ang_vel_w", 3),
+  ):
     tp[k] = np.zeros((n, w), np.float32)
   Path(out).parent.mkdir(parents=True, exist_ok=True)
   np.savez(out, **tp)
@@ -80,34 +76,49 @@ class Args:
   run_dir: str
   snapshot: str | None = None
   standing_src: str = ""
-  """npz of a standing clip; default: first 'standing_idle' clip in data/loco/npz."""
-  standing_out: str = "../../data/tpose/standing_static.npz"
+  """npz of a standing clip; default: first ``*idle*`` clip in <data>/loco/npz."""
+  standing_out: str | None = None
+  """Default <data>/derived/standing_static.npz."""
   output: str | None = None
   device: str | None = None
 
 
 @torch.inference_mode()
 def main(a: Args) -> None:
-  src = a.standing_src or sorted(Path("../../data/loco/npz").glob("*idle*.npz"))[0].as_posix()
-  standing = make_standing(src, a.standing_out)
+  if a.standing_src:
+    src = a.standing_src
+  else:
+    idle = sorted(require(data_path("loco", "npz"), "loco library").glob("*idle*.npz"))
+    if not idle:
+      raise SystemExit("no *idle* clip in <data>/loco/npz; pass --standing-src")
+    src = idle[0].as_posix()
+  standing = make_standing(
+    src, a.standing_out or str(data_path("derived", "standing_static.npz"))
+  )
   cmds = torch.as_tensor(command_grid())
   n_cmd = cmds.shape[0]
   n = n_cmd * TRIALS
-  cfg = ev_mod.EvalConfig(run_dir=a.run_dir, motion_file=standing, device=a.device)
-  ev = ev_mod.Evaluator(cfg)
+  cfg = EvalConfig(run_dir=a.run_dir, motion_file=standing, device=a.device)
+  ev = Evaluator(cfg)
   ev.files = [standing] * n
-  env, wm, base, _, _, _ = ev._build(ev.files, drop_terminations=("anchor_pos", "anchor_ori"))
+  env, wm, base, _, _, _ = ev._build(
+    ev.files, drop_terminations=("anchor_pos", "anchor_ori")
+  )
   st_path = Path(a.run_dir) / "snapshots" / a.snapshot if a.snapshot else None
   if st_path:
     st = torch.load(st_path, map_location=ev.device)
   else:
     st = {
-      "world_model": torch.load(Path(a.run_dir) / "world_model.pt", map_location=ev.device),
+      "world_model": torch.load(
+        Path(a.run_dir) / "world_model.pt", map_location=ev.device
+      ),
       "actor": torch.load(Path(a.run_dir) / "actor.pt", map_location=ev.device),
     }
   wm.load_bundle(st["world_model"])
   raw = json.loads((Path(a.run_dir) / "run_config.json").read_text())
-  hidden = tuple(raw["runner_cfg"].get("velocity", {}).get("encoder_hidden", (256, 256)))
+  hidden = tuple(
+    raw["runner_cfg"].get("velocity", {}).get("encoder_hidden", (256, 256))
+  )
   actor = VelocityActor(base, hidden, align_weight=0.0).to(ev.device)
   actor.load_state_dict(st["actor"])
   actor.eval()
@@ -125,8 +136,11 @@ def main(a: Args) -> None:
     full = obs["full_state"].to(ev.device)
     rep_state, aux = rep.represent(full), rep.extract_aux_state(full)
     sensor = rep.compute_actor_sensor(
-      rep_state, wm.sim_context.read(uw), aux_state=aux,
-      sim_actor_obs=obs["actor"].to(ev.device), noisy=True,
+      rep_state,
+      wm.sim_context.read(uw),
+      aux_state=aux,
+      sim_actor_obs=obs["actor"].to(ev.device),
+      noisy=True,
     )
     history = (
       sensor.unsqueeze(1).repeat(1, hist_len, 1)
@@ -139,7 +153,9 @@ def main(a: Args) -> None:
     pos = d.root_link_pos_w - uw.scene.env_origins
     fell |= fall_error(pos, d.root_link_quat_w) >= 1.0
     if t >= steps - tail:
-      meas = measured_cmd_space(d.root_link_quat_w, d.root_link_lin_vel_w, d.root_link_ang_vel_w)
+      meas = measured_cmd_space(
+        d.root_link_quat_w, d.root_link_lin_vel_w, d.root_link_ang_vel_w
+      )
       err_tail += (meas - cmd) / tail
   rel = (err_tail.norm(dim=-1) / cmd.norm(dim=-1)).view(n_cmd, TRIALS)
   fell = fell.view(n_cmd, TRIALS)
@@ -166,5 +182,10 @@ def main(a: Args) -> None:
   env.close()
 
 
-if __name__ == "__main__":
+def cli() -> None:
+  """Console entry point ``sm-velocity-step-test``."""
   main(tyro.cli(Args))
+
+
+if __name__ == "__main__":
+  cli()

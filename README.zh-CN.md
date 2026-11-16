@@ -59,8 +59,8 @@
      - `--runner.noise-final 0.02`：采集噪声随训练逐渐衰减。
 2. **余弦学习率**（论文表 A.5），参数为 `--runner.lr-schedule cosine`。
    - 官方代码的隐藏层用的是 Muon 优化器。torch 的 Muon 在 CUDA graph 捕获下学习率会被冻住，导致学习率调度不生效。
-   - 我们用 `ScheduledMuon` 修复了这个问题，测试见 `repro/test_lr_schedule.py`。
-3. **多卡数据并行**（`repro/run_train_ddp.sh`）：
+   - 我们用 `ScheduledMuon` 修复了这个问题，测试见 `tests/test_lr_schedule.py`。
+3. **多卡数据并行**（`scripts/train_ddp.sh`）：
    - 用 torchrun 启动，对梯度做 all-reduce；
    - 学习率乘以 √N；
    - 定期校验各卡权重一致。
@@ -81,21 +81,33 @@
 
 环境要求：Linux x86_64，NVIDIA 驱动 ≥ R525，并安装 [uv](https://docs.astral.sh/uv/)。
 
-脚本默认的目录结构如下：
-
-```
-workspace/
-├── data/                  # 动作数据（不包含在仓库中，见下文）
-└── ws/
-    ├── supermimic/        # 本仓库
-    └── mjlab_research/    # git clone https://github.com/HybridRobotics/mjlab_research
-```
-
 ```bash
-cd ws/supermimic
-uv sync
-export MUJOCO_GL=disable WANDB_MODE=offline   # 无显示环境；W&B 可选
-uv run pytest -q tests/ repro/test_lr_schedule.py
+git clone https://github.com/Camtrixxx/SuperMimic && cd SuperMimic
+uv sync                                        # 同时安装固定版本（固定 commit）的 mjlab
+export MUJOCO_GL=disable WANDB_MODE=offline    # 无显示环境；W&B 可选
+uv run pytest -q tests/
+```
+
+动作数据放在仓库的 `data/` 目录下；也可以用环境变量 `$SUPERMIMIC_DATA` 指向别的位置，或者用软链接。数据不会提交到仓库：
+
+```
+data/
+├── lafan1_g1/{csv,npz}/
+├── bones_seed/{g1,metadata,npz_name_filtered,npz_final,packed_final}/
+├── loco/{npz,packed}/       # 速度接口用的走跑动作库
+└── derived/                 # 生成的小片段（静态姿势等）
+```
+
+工具都安装成了 `sm-*` 命令，比如 `uv run sm-eval --help`。代码结构如下：
+
+```
+src/supermimic/
+├── data/          sm-convert、sm-bones-name-filter、sm-feasibility、sm-bones-finalize、sm-loco-library
+├── evaluation/    sm-eval、sm-merge-eval、sm-summarize-evals、sm-push-test、sm-velocity-step-test
+├── runners/ learners/ envs/ models.py ...   训练（官方代码加我们的修改）
+└── scripts/       sm-train、sm-train-velocity、play、benchmark
+scripts/           train.sh、train_ddp.sh、watch_eval*.sh；experiments/2026-11/ 是存档的调度脚本
+tests/             CPU 单元测试（在 CI 中运行）
 ```
 
 `pyproject.toml` 固定使用 NVIDIA 的 CUDA 12 版 warp-lang。原因是 PyPI 上 1.18 及以后的版本需要 R580 以上的驱动。
@@ -109,8 +121,8 @@ uv run pytest -q tests/ repro/test_lr_schedule.py
 把 40 个 CSV 放到 `data/lafan1_g1/csv/`，然后运行：
 
 ```bash
-uv run repro/csv_to_npz.py --input-glob '../../data/lafan1_g1/csv/*.csv' \
-  --output-dir ../../data/lafan1_g1/npz --input-fps 30
+uv run sm-convert --input-glob 'data/lafan1_g1/csv/*.csv' \
+  --output-dir data/lafan1_g1/npz --input-fps 30
 ```
 
 **BONES-SEED**（[bones-studio/seed](https://huggingface.co/datasets/bones-studio/seed)，需要申请访问，使用自定义许可）
@@ -118,13 +130,14 @@ uv run repro/csv_to_npz.py --input-glob '../../data/lafan1_g1/csv/*.csv' \
 把 `g1.tar.gz` 和 `metadata/` 下载到 `data/bones_seed/`，在该目录解压，然后运行：
 
 ```bash
-D=../../data/bones_seed
-uv run repro/bones_name_filter.py --metadata $D/metadata/seed_metadata_v004.parquet --out-keep $D/keep_names.txt
-uv run repro/csv_to_npz.py --input-glob "$D/g1/csv/*/*.csv" --output-dir $D/npz_name_filtered \
+D=data/bones_seed
+uv run sm-bones-name-filter --metadata $D/metadata/seed_metadata_v004.parquet --out-keep $D/keep_names.txt
+uv run sm-convert --input-glob "$D/g1/csv/*/*.csv" --output-dir $D/npz_name_filtered \
   --format bones --input-fps 120 --keep-list $D/keep_names.txt
-uv run repro/feasibility.py --npz-glob "$D/npz_name_filtered/*.npz" --out $D/feasibility.parquet
-uv run repro/bones_finalize.py --data $D
+uv run sm-feasibility --npz-glob "$D/npz_name_filtered/*.npz" --out $D/feasibility.parquet
+uv run sm-bones-finalize --data $D
 uv run python -m mjlab.scripts.pack_motions --input "$D/npz_final/*.npz" --output $D/packed_final
+uv run sm-loco-library    # 速度接口用的走跑动作库（data/loco）
 ```
 
 ## 训练
@@ -132,12 +145,12 @@ uv run python -m mjlab.scripts.pack_motions --input "$D/npz_final/*.npz" --outpu
 ```bash
 COS="--runner.lr-schedule cosine --runner.lr-decay-iters 250000 --runner.lr-final-ratio 0.03"
 # LAFAN1，单卡（论文的 actor 配置：本体感知观测，10 帧历史）
-repro/run_train.sh 0 lafan1_s0 --env.seed 0 --runner.max-iterations 40001
+scripts/train.sh 0 lafan1_s0 --env.seed 0 --runner.max-iterations 40001
 # BONES-SEED，单卡
-MOTION=../../data/bones_seed/packed_final repro/run_train.sh 0 bones_1gpu \
+MOTION=data/bones_seed/packed_final scripts/train.sh 0 bones_1gpu \
   --runner.max-iterations 320001 --runner.save-interval 8000 $COS --runner.clean-action-frac 0.5
 # BONES-SEED，双卡
-MOTION=../../data/bones_seed/packed_final repro/run_train_ddp.sh 0,1 bones_2gpu \
+MOTION=data/bones_seed/packed_final scripts/train_ddp.sh 0,1 bones_2gpu \
   --runner.max-iterations 320001 --runner.save-interval 8000 $COS --runner.clean-action-frac 0.5
 ```
 
@@ -150,20 +163,20 @@ MOTION=../../data/bones_seed/packed_final repro/run_train_ddp.sh 0,1 bones_2gpu 
 ```bash
 RUN=logs/SuperMimic-GenCoord-G1/<运行目录>
 # LAFAN1，评估所有检查点
-uv run repro/evaluate.py --run-dir $RUN --motion-file '../../data/lafan1_g1/npz/*.npz' --all-snapshots
+uv run sm-eval --run-dir $RUN --motion-file 'data/lafan1_g1/npz/*.npz' --all-snapshots
 # BONES-SEED：多卡分片评估后合并（8 张 A100 约 10 分钟）
-for k in 0 1 2 3; do CUDA_VISIBLE_DEVICES=$k uv run repro/evaluate.py --run-dir $RUN \
-  --motion-file '../../data/bones_seed/npz_final/*.npz' --snapshot it0320000.pt --sort-by-length \
+for k in 0 1 2 3; do CUDA_VISIBLE_DEVICES=$k uv run sm-eval --run-dir $RUN \
+  --motion-file 'data/bones_seed/npz_final/*.npz' --snapshot it0320000.pt --sort-by-length \
   --shard $k --num-shards 4 --output $RUN/eval_full/shard$k.json & done; wait
-uv run repro/merge_eval.py --pattern "$RUN/eval_full/shard*.json"
+uv run sm-merge-eval --pattern "$RUN/eval_full/shard*.json"
 # 推力恢复 / 速度接口
-uv run repro/push_test.py --run-dir $RUN --snapshot it0040000.pt
-uv run src/supermimic/scripts/train_velocity.py --init-run-dir $RUN --init-snapshot it0144000.pt \
-  --mode rl --motion-file <走跑动作库打包目录> --run-name vel_rl
-uv run repro/velocity_step_test.py --run-dir <速度接口运行目录> --snapshot it0100000.pt
+uv run sm-push-test --run-dir $RUN --snapshot it0040000.pt
+uv run sm-train-velocity --init-run-dir $RUN --init-snapshot it0144000.pt \
+  --mode rl --motion-file data/loco/packed --run-name vel_rl
+uv run sm-velocity-step-test --run-dir <速度接口运行目录> --snapshot it0100000.pt
 ```
 
-`repro/phase*.sh` 和 `repro/watch_eval*.sh` 是我们实验时用的调度脚本，里面写死了运行目录名。
+`scripts/watch_eval*.sh` 会在训练过程中自动评估新写出的检查点。我们跑报告里这些实验时用的一次性调度脚本，存档在 [scripts/experiments/2026-11/](scripts/experiments/2026-11/README.md)。
 
 ## 许可与署名
 

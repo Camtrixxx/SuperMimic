@@ -1,9 +1,9 @@
 """Train a velocity-command encoder on a frozen, trained motion tracker.
 
 Example:
-  CUDA_VISIBLE_DEVICES=4 uv run src/supermimic/scripts/train_velocity.py \
+  CUDA_VISIBLE_DEVICES=4 uv run sm-train-velocity \
     --init-run-dir logs/SuperMimic-GenCoord-G1/<motion run> --init-snapshot it0112000.pt \
-    --mode rl --motion-file ../../data/loco/packed --run-name vel_rl
+    --mode rl --motion-file data/loco/packed --run-name vel_rl
 """
 
 from __future__ import annotations
@@ -50,7 +50,9 @@ def main(a: Args) -> None:
   base = load_base_cfg(a.init_run_dir)
   cfg = VelocityRunnerCfg(
     **{f.name: getattr(base, f.name) for f in dataclasses.fields(SuperMimicRunnerCfg)},
-    velocity=VelocityCfg(mode=a.mode, init_run_dir=a.init_run_dir, init_snapshot=a.init_snapshot),
+    velocity=VelocityCfg(
+      mode=a.mode, init_run_dir=a.init_run_dir, init_snapshot=a.init_snapshot
+    ),
   )
   cfg.run_name = a.run_name
   cfg.max_iterations = a.max_iterations
@@ -74,5 +76,10 @@ def main(a: Args) -> None:
   VelocityRunner(env=env, cfg=cfg, task_id=a.task_id, device=device).run()
 
 
-if __name__ == "__main__":
+def cli() -> None:
+  """Console entry point ``sm-train-velocity``."""
   main(tyro.cli(Args))
+
+
+if __name__ == "__main__":
+  cli()

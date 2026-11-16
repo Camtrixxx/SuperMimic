@@ -1,9 +1,9 @@
-"""Final BONES-SEED clip set: drop clips flagged by repro/feasibility.py.
+"""Final BONES-SEED clip set: drop clips flagged by supermimic.data.feasibility.
 
 Writes <data>/keep_final.txt and <data>/removed_by_feasibility.csv, and links
 the kept clips into <data>/npz_final/ (pack them with mjlab.scripts.pack_motions).
 
-Usage: uv run repro/bones_finalize.py --data ../../data/bones_seed
+Usage: uv run sm-bones-finalize --data data/bones_seed
 """
 
 from __future__ import annotations
@@ -39,5 +39,10 @@ def main(a: Args) -> None:
   print(f"[INFO] kept {len(keep)} of {len(d)} clips -> {out}")
 
 
-if __name__ == "__main__":
+def cli() -> None:
+  """Console entry point ``sm-bones-finalize``."""
   main(tyro.cli(Args))
+
+
+if __name__ == "__main__":
+  cli()

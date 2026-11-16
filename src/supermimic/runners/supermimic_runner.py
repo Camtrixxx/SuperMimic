@@ -18,13 +18,13 @@ from tensordict import TensorDict
 
 from supermimic.envs.motion_tracking_env import MotionTrackingEnv
 from supermimic.envs.multi_task_world_model_env import MultiTaskWorldModelEnv
+from supermimic.learners.learner_utils import broadcast_module, lr_scale, set_lr_scale
 from supermimic.learners.policy_learner import (
   ActorCriticPolicyLearner,
   ActorCriticPolicyLearnerCfg,
   BpttPolicyLearner,
   BpttPolicyLearnerCfg,
 )
-from supermimic.learners.learner_utils import broadcast_module, lr_scale, set_lr_scale
 from supermimic.learners.wm_learner import WorldModelLearner, WorldModelLearnerCfg
 from supermimic.models import Dynamics, MultiEncoderAE, build_mlp
 from supermimic.replay_buffer import FieldSpec, ReplayBuffer

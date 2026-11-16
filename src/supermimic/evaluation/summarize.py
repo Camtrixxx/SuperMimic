@@ -1,6 +1,6 @@
-"""Summarize per-snapshot eval JSONs (repro/watch_eval.sh) across seeds.
+"""Summarize per-snapshot eval JSONs (scripts/watch_eval.sh) across seeds.
 
-Usage: uv run repro/summarize_evals.py --target 0.82 <run_dir>...
+Usage: uv run sm-summarize-evals --target 0.82 <run_dir>...
 """
 
 from __future__ import annotations
@@ -29,7 +29,9 @@ def load(run: Path) -> list[dict]:
 
 def main(a: Args) -> None:
   fail_counter: Counter[str] = Counter()
-  print(f"{'run':<34} {'first>=tgt':>16} {'best ret':>16} {'first 0-fail':>16} {'final':>18}")
+  print(
+    f"{'run':<34} {'first>=tgt':>16} {'best ret':>16} {'first 0-fail':>16} {'final':>18}"
+  )
   for run in map(Path, a.runs):
     rows = load(run)
     first = next((r for r in rows if r["normalized_return_mean"] >= a.target), None)
@@ -61,5 +63,10 @@ def main(a: Args) -> None:
     print(f"  {clip}: {n}")
 
 
-if __name__ == "__main__":
+def cli() -> None:
+  """Console entry point ``sm-summarize-evals``."""
   main(tyro.cli(Args))
+
+
+if __name__ == "__main__":
+  cli()

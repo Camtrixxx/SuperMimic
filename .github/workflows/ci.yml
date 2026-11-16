@@ -2,15 +2,22 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main]
     paths-ignore:
       - '**.md'
       - 'LICENSE'
+      - 'results/**'
   pull_request:
-    branches: [master]
+    branches: [main]
     paths-ignore:
       - '**.md'
       - 'LICENSE'
+      - 'results/**'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   UV_FROZEN: "1"
@@ -20,39 +27,34 @@ jobs:
   lint-format:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-      - name: Run lint
-        run: uvx ruff@0.15.0 check --diff src/
-      - name: Run format
-        run: uvx ruff@0.15.0 format --diff src/
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Lint
+        run: uvx ruff@0.15.0 check src/ tests/
+      - name: Format
+        run: uvx ruff@0.15.0 format --check src/ tests/
+      - name: Shell syntax
+        run: for f in scripts/*.sh; do bash -n "$f"; done
 
   tests:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: supermimic
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          path: supermimic
-      - name: Checkout mjlab
-        uses: actions/checkout@v4
-        with:
-          repository: HybridRobotics/mjlab_research
-          token: ${{ secrets.MJLAB_PAT }}
-          path: mjlab_research
-      - name: Setup uv
-        uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v4
+      - name: Free disk space (torch + CUDA wheels need ~8 GB)
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.13"
           enable-cache: true
-      - name: Install dependencies
+      - name: Install
         run: uv sync
-      - name: Run tests
-        run: uv run pytest || [ $? -eq 5 ]
+      - name: Type check (data and evaluation tools)
+        run: uv run pyright src/supermimic/data src/supermimic/evaluation src/supermimic/paths.py
+      - name: CLI entry points
+        run: |
+          for c in sm-convert sm-bones-name-filter sm-feasibility sm-bones-finalize sm-loco-library \
+                   sm-eval sm-merge-eval sm-summarize-evals sm-push-test sm-velocity-step-test sm-train-velocity; do
+            uv run "$c" --help > /dev/null
+          done
+      - name: Tests (CPU)
+        run: uv run pytest -q tests/

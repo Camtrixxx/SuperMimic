@@ -27,7 +27,10 @@
 | `src/supermimic/runners/supermimic_runner.py` | 训练主循环（含修复、余弦学习率、多卡）/ Training loop (fixes, cosine LR, DDP) |
 | `src/supermimic/learners/learner_utils.py` | 优化器、`ScheduledMuon`、梯度 all-reduce / Optimizers, `ScheduledMuon`, gradient all-reduce |
 | `src/supermimic/velocity.py`, `runners/velocity_runner.py`, `scripts/train_velocity.py` | 速度指令接口（RL 与蒸馏）/ Velocity-command interface (RL and distillation) |
-| `repro/csv_to_npz.py`, `bones_name_filter.py`, `feasibility.py`, `bones_finalize.py` | 数据流程 / Data pipeline |
-| `repro/evaluate.py`, `merge_eval.py` | 附录 F.1 评估 / Appendix F.1 benchmark |
-| `repro/push_test.py`, `velocity_step_test.py` | 推力恢复、速度阶跃测试 / Push recovery, velocity step test |
-| `repro/run_train.sh`, `run_train_ddp.sh` | 单卡 / 多卡训练启动脚本 / Single- and multi-GPU launchers |
+| `src/supermimic/data/` | 数据流程：`sm-convert`、`sm-bones-name-filter`、`sm-feasibility`、`sm-bones-finalize`、`sm-loco-library` / Data pipeline |
+| `src/supermimic/evaluation/` | 评估：`sm-eval`（附录 F.1）、`sm-merge-eval`、`sm-summarize-evals`、`sm-push-test`、`sm-velocity-step-test` / Evaluation |
+| `src/supermimic/paths.py` | 数据根目录（`$SUPERMIMIC_DATA` 或 `<repo>/data`）/ Data root |
+| `scripts/train.sh`, `scripts/train_ddp.sh` | 单卡 / 多卡训练启动脚本 / Single- and multi-GPU launchers |
+| `scripts/watch_eval*.sh` | 训练中自动评估新检查点 / Evaluate snapshots as they are written |
+| `scripts/experiments/2026-11/` | 存档：本次报告实验的一次性调度脚本 / Archived one-off schedulers |
+| `tests/` | CPU 单元测试，CI 中运行 / CPU unit tests, run in CI |

@@ -11,7 +11,7 @@ Counts on seed_metadata_v004 (142,220 clips):
   + EXTRA (this file)   keeps 129,679   (paper: 129,667, i.e. 12 clips = 0.01% off)
 The paper's exact extra terms are not published; we did not tune further.
 
-Usage: uv run repro/bones_name_filter.py --metadata .../seed_metadata_v004.parquet \
+Usage: uv run sm-bones-name-filter --metadata .../seed_metadata_v004.parquet \
          --out-keep keep_names.txt
 """
 
@@ -53,5 +53,10 @@ def main(a: Args) -> None:
   print(f"[INFO] {len(m)} clips, removed {int(removed.sum())}, kept {len(keep)}")
 
 
-if __name__ == "__main__":
+def cli() -> None:
+  """Console entry point ``sm-bones-name-filter``."""
   main(tyro.cli(Args))
+
+
+if __name__ == "__main__":
+  cli()

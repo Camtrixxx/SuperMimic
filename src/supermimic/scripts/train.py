@@ -10,7 +10,9 @@ from dataclasses import dataclass
 if int(os.environ.get("WORLD_SIZE", "1")) > 1:
   _local = int(os.environ["LOCAL_RANK"])
   _vis = os.environ.get("CUDA_VISIBLE_DEVICES")
-  _gpus = _vis.split(",") if _vis else [str(i) for i in range(int(os.environ["WORLD_SIZE"]))]
+  _gpus = (
+    _vis.split(",") if _vis else [str(i) for i in range(int(os.environ["WORLD_SIZE"]))]
+  )
   os.environ["CUDA_VISIBLE_DEVICES"] = _gpus[_local]
 
 import mjlab.tasks  # noqa: F401, E402

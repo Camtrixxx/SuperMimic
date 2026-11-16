@@ -9,10 +9,10 @@ One env per clip, so all clips run in parallel; ``--max-envs`` chunks large
 libraries.
 
 Example:
-  uv run repro/evaluate.py --run-dir logs/SuperMimic-GenCoord-G1/<ts> \
+  uv run sm-eval --run-dir logs/SuperMimic-GenCoord-G1/<ts> \
     --motion-file 'data/lafan1_g1/npz/*.npz'
   # every snapshot (return-vs-time curve):
-  uv run repro/evaluate.py --run-dir ... --motion-file ... --all-snapshots
+  uv run sm-eval --run-dir ... --motion-file ... --all-snapshots
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ import os
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import mjlab.tasks  # noqa: F401
 import numpy as np
@@ -31,6 +32,8 @@ import tyro
 from mjlab.envs import ManagerBasedRlEnv
 from mjlab.rl import RslRlVecEnvWrapper
 from mjlab.tasks.registry import load_env_cfg
+from mjlab.tasks.tracking.mdp import MotionCommandCfg
+from mjlab.tasks.tracking.mdp.commands import MotionCommand
 from mjlab.utils.torch import configure_torch_backends
 
 import supermimic.tasks  # noqa: F401
@@ -86,11 +89,12 @@ def _resolve_files(spec: str) -> list[str]:
 
 def _eval_env_cfg(task_id: str, files: list[str]):
   cfg = load_env_cfg(task_id, play=True)  # infinite episode, no pushes/corruption
-  cfg.commands["motion"].motion_file = files
-  cfg.commands["motion"].sampling_mode = "external"  # overridden per-env below
-  cfg.commands["motion"].pose_range = {}
-  cfg.commands["motion"].velocity_range = {}
-  cfg.commands["motion"].joint_position_range = (0.0, 0.0)
+  mc = cast(MotionCommandCfg, cfg.commands["motion"])
+  mc.motion_file = files
+  mc.sampling_mode = "external"  # overridden per-env below
+  mc.pose_range = {}
+  mc.velocity_range = {}
+  mc.joint_position_range = (0.0, 0.0)
   ev = cfg.events
   # Keep the DR events (SimContext discovers its specs from them) but pin them
   # to nominal values. The ctx normalization comes from the checkpoint.
@@ -121,11 +125,11 @@ class Evaluator:
     env = RslRlVecEnvWrapper(ManagerBasedRlEnv(cfg=env_cfg, device=self.device))
     wm = build_world_model(self.runner_cfg, env, self.device)
     actor = build_actor(self.runner_cfg, wm, self.device)
-    cmd = env.unwrapped.command_manager.get_term("motion")
+    cmd = cast(MotionCommand, env.unwrapped.command_manager.get_term("motion"))
     ends = cmd.motion.motion_ends
     starts = torch.cat([ends.new_zeros(1), ends[:-1]])
     # Env i always resets to the first frame of clip i.
-    cmd._external_sampling = lambda env_ids: starts[env_ids]
+    cmd._external_sampling = lambda env_ids: starts[env_ids]  # type: ignore[method-assign]
     return env, wm, actor, cmd, starts, ends
 
   @torch.inference_mode()
@@ -235,7 +239,9 @@ def main(cfg: EvalConfig) -> None:
       {
         "iteration": None,
         "wall_time_s": None,
-        "world_model": torch.load(ev.run_dir / "world_model.pt", map_location=ev.device),
+        "world_model": torch.load(
+          ev.run_dir / "world_model.pt", map_location=ev.device
+        ),
         "actor": torch.load(ev.run_dir / "actor.pt", map_location=ev.device),
       }
     ]
@@ -256,7 +262,9 @@ def main(cfg: EvalConfig) -> None:
   for st, rows in zip(states, per_state, strict=True):
     entry = {
       "iteration": st.get("iteration"),
-      "wall_time_h": None if st.get("wall_time_s") is None else st["wall_time_s"] / 3600,
+      "wall_time_h": None
+      if st.get("wall_time_s") is None
+      else st["wall_time_s"] / 3600,
       **_summary(rows),
       "failed_clips": [r["clip"] for r in rows if r["failed"]],
     }
@@ -272,5 +280,10 @@ def main(cfg: EvalConfig) -> None:
   print(f"[INFO] wrote {out}")
 
 
-if __name__ == "__main__":
+def cli() -> None:
+  """Console entry point ``sm-eval``."""
   main(tyro.cli(EvalConfig))
+
+
+if __name__ == "__main__":
+  cli()

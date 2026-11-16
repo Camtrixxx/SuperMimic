@@ -1,6 +1,6 @@
 """ScheduledMuon parity with torch Muon, and LR changes reaching a captured graph.
 
-Run: uv run pytest repro/test_lr_schedule.py
+Run: uv run pytest tests/test_lr_schedule.py
 """
 
 from __future__ import annotations

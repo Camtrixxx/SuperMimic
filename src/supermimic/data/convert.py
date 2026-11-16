@@ -2,12 +2,12 @@
 
 Vectorized, local-output equivalent of ``mjlab/scripts/csv_to_npz.py`` (which
 converts one file per call with a per-frame Python slerp and uploads to W&B).
-Arrays and resampling match it exactly; see ``repro/test_csv_to_npz.py``.
+Arrays and resampling match it exactly; see ``tests/test_convert_parity.py``.
 
 CSV rows: ``[root_pos(3), root_quat_xyzw(4), joint_pos(29)]``.
 
 Example:
-  uv run repro/csv_to_npz.py --input-glob 'data/lafan1_g1/csv/*.csv' \
+  uv run sm-convert --input-glob 'data/lafan1_g1/csv/*.csv' \
     --output-dir data/lafan1_g1/npz --input-fps 30
 """
 
@@ -23,7 +23,6 @@ import numpy as np
 import pandas as pd
 import torch
 import tyro
-from scipy.spatial.transform import Rotation
 from mjlab.scripts.csv_to_npz import JOINT_NAMES
 from mjlab.utils.lab_api.math import (
   axis_angle_from_quat,
@@ -31,9 +30,12 @@ from mjlab.utils.lab_api.math import (
   quat_mul,
   quat_slerp,
 )
+from scipy.spatial.transform import Rotation
 
 
-def batched_slerp(q1: torch.Tensor, q2: torch.Tensor, tau: torch.Tensor) -> torch.Tensor:
+def batched_slerp(
+  q1: torch.Tensor, q2: torch.Tensor, tau: torch.Tensor
+) -> torch.Tensor:
   """Row-wise slerp with the same branches as ``mjlab...math.quat_slerp``."""
   eps = torch.finfo(q1.dtype).eps * 4.0
   q1_in, q2_in = q1, q2
@@ -65,7 +67,11 @@ def batched_slerp(q1: torch.Tensor, q2: torch.Tensor, tau: torch.Tensor) -> torc
 def read_lafan(path: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
   """Headerless rows ``[pos_m(3), quat_xyzw(4), joint_rad(29)]``."""
   motion = torch.from_numpy(np.loadtxt(path, delimiter=",", ndmin=2)).float()
-  return motion[:, :3], motion[:, 3:7][:, [3, 0, 1, 2]], motion[:, 7 : 7 + len(JOINT_NAMES)]
+  return (
+    motion[:, :3],
+    motion[:, 3:7][:, [3, 0, 1, 2]],
+    motion[:, 7 : 7 + len(JOINT_NAMES)],
+  )
 
 
 def read_bones(path: str) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
@@ -143,7 +149,8 @@ class Args:
 def _job(job: tuple[str, str, float, float, str]) -> str:
   src, dst, input_fps, output_fps, fmt = job
   torch.set_num_threads(1)
-  np.savez(dst, **convert(src, input_fps, output_fps, fmt))
+  arrays = convert(src, input_fps, output_fps, fmt)
+  np.savez(dst, **arrays)  # pyright: ignore[reportArgumentType]
   return dst
 
 
@@ -168,5 +175,10 @@ def main(args: Args) -> None:
         print(f"[INFO] {i}/{len(jobs)}")
 
 
-if __name__ == "__main__":
+def cli() -> None:
+  """Console entry point ``sm-convert``."""
   main(tyro.cli(Args))
+
+
+if __name__ == "__main__":
+  cli()

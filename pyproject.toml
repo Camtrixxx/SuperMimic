@@ -12,12 +12,28 @@ license-files = ["LICENSE"]
 requires-python = ">=3.13,<3.14"
 dependencies = [
     "mjlab[cu126]",
-    "ruff>=0.14.10",
+    "pandas>=3.1.1",
+    "pyarrow>=26.0.1",
     "viser>=1.0.24",
 ]
 
+[project.scripts]
+sm-train = "supermimic.scripts.train:main"
+sm-train-velocity = "supermimic.scripts.train_velocity:cli"
+sm-convert = "supermimic.data.convert:cli"
+sm-bones-name-filter = "supermimic.data.bones_filter:cli"
+sm-feasibility = "supermimic.data.feasibility:cli"
+sm-bones-finalize = "supermimic.data.bones_finalize:cli"
+sm-loco-library = "supermimic.data.loco_library:cli"
+sm-eval = "supermimic.evaluation.tracking:cli"
+sm-merge-eval = "supermimic.evaluation.merge:cli"
+sm-summarize-evals = "supermimic.evaluation.summarize:cli"
+sm-push-test = "supermimic.evaluation.push_test:cli"
+sm-velocity-step-test = "supermimic.evaluation.velocity_step_test:cli"
+
 [tool.uv.sources]
-mjlab = { path = "../mjlab_research", editable = true }
+# HybridRobotics/mjlab_research, pinned to the commit all results were produced with.
+mjlab = { git = "https://github.com/HybridRobotics/mjlab_research", rev = "dd51a9fcc98791a2f0b018b3c7f71a3eefd5ecdd" }
 
 [tool.ruff]
 src = ["src"]
@@ -33,15 +49,16 @@ pythonVersion = "3.13"
 venvPath = "."
 venv = ".venv"
 include = ["src"]
+# torch's stubs do not re-export most public functions (torch.cat, torch.where, ...).
+reportPrivateImportUsage = false
 
 [dependency-groups]
 dev = [
     "ipdb>=0.13.13",
-    "pandas>=3.1.1",
     "pre-commit>=4.2.0",
-    "pyarrow>=26.0.1",
     "pyright>=1.1.408",
     "pytest>=9.0.2",
+    "ruff>=0.14.10",
 ]
 
 # repro: NVIDIA's CUDA-12 build of warp-lang. PyPI warp-lang>=1.18 is built with

@@ -14,14 +14,12 @@ while holding a static T-pose in simulation"):
              until the end; settle time = push -> last entry
 
 Usage:
-  uv run repro/push_test.py --run-dir <run> [--snapshot it0040000.pt]
+  uv run sm-push-test --run-dir <run> [--snapshot it0040000.pt]
 """
 
 from __future__ import annotations
 
-import importlib.util
 import json
-import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -29,15 +27,9 @@ import numpy as np
 import torch
 import tyro
 
+from supermimic.evaluation.tracking import EvalConfig, Evaluator
+from supermimic.paths import data_path, require
 from supermimic.tasks.task_spec import build_actor_obs_td
-
-_spec = importlib.util.spec_from_file_location(
-  "repro_evaluate", Path(__file__).with_name("evaluate.py")
-)
-assert _spec is not None and _spec.loader is not None
-ev_mod = importlib.util.module_from_spec(_spec)
-sys.modules[_spec.name] = ev_mod
-_spec.loader.exec_module(ev_mod)
 
 DT = 0.02
 SPEEDS = (0.5, 1.0, 2.0, 3.0, 4.0)
@@ -67,25 +59,34 @@ def make_tpose(src: str, out: str, seconds: float = END_T + 1.0) -> str:
 class Args:
   run_dir: str
   snapshot: str | None = None
-  tpose_src: str = "../../data/lafan1_g1/npz/walk1_subject1.npz"
-  tpose_out: str = "../../data/tpose/tpose_static.npz"
+  tpose_src: str | None = None
+  """Clip whose frame 0 is the T-pose; default <data>/lafan1_g1/npz/walk1_subject1.npz."""
+  tpose_out: str | None = None
+  """Default <data>/derived/tpose_static.npz."""
   output: str | None = None
   device: str | None = None
 
 
 @torch.inference_mode()
 def main(a: Args) -> None:
-  tpose = make_tpose(a.tpose_src, a.tpose_out)
+  src = a.tpose_src or str(
+    require(data_path("lafan1_g1", "npz", "walk1_subject1.npz"), "T-pose clip")
+  )
+  tpose = make_tpose(src, a.tpose_out or str(data_path("derived", "tpose_static.npz")))
   n_env = N_DIRS * len(SPEEDS)
-  cfg = ev_mod.EvalConfig(run_dir=a.run_dir, motion_file=tpose, device=a.device)
-  ev = ev_mod.Evaluator(cfg)
+  cfg = EvalConfig(run_dir=a.run_dir, motion_file=tpose, device=a.device)
+  ev = Evaluator(cfg)
   ev.files = [tpose] * n_env
-  env, wm, actor, cmd, _, _ = ev._build(ev.files, drop_terminations=("anchor_pos", "anchor_ori"))
+  env, wm, actor, cmd, _, _ = ev._build(
+    ev.files, drop_terminations=("anchor_pos", "anchor_ori")
+  )
   if a.snapshot:
     st = torch.load(Path(a.run_dir) / "snapshots" / a.snapshot, map_location=ev.device)
   else:
     st = {
-      "world_model": torch.load(Path(a.run_dir) / "world_model.pt", map_location=ev.device),
+      "world_model": torch.load(
+        Path(a.run_dir) / "world_model.pt", map_location=ev.device
+      ),
       "actor": torch.load(Path(a.run_dir) / "actor.pt", map_location=ev.device),
     }
   wm.load_bundle(st["world_model"])
@@ -108,7 +109,11 @@ def main(a: Args) -> None:
   history = None
   steps = int(END_T / DT)
   push_step = int(PUSH_T / DT)
-  speed_log, jerr_log, fell = [], [], torch.zeros(n_env, dtype=torch.bool, device=ev.device)
+  speed_log, jerr_log, fell = (
+    [],
+    [],
+    torch.zeros(n_env, dtype=torch.bool, device=ev.device),
+  )
   for t in range(steps):
     obs = env.get_observations()
     full = obs["full_state"].to(ev.device)
@@ -125,7 +130,10 @@ def main(a: Args) -> None:
       if history is None
       else torch.cat([history[:, 1:], sensor.unsqueeze(1)], 1)
     )
-    goals = {ts.name: ts.extract_training_goal(cmd.motion, cmd.time_steps.clone(), aux) for ts in specs}
+    goals = {
+      ts.name: ts.extract_training_goal(cmd.motion, cmd.time_steps.clone(), aux)
+      for ts in specs
+    }
     env.step(actor(build_actor_obs_td(goals, history)))
     if t == push_step:
       vel = robot.data.root_link_vel_w.clone()
@@ -159,7 +167,9 @@ def main(a: Args) -> None:
   idx = torch.arange(not_ok.shape[1], device=ev.device).float()
   last_bad = torch.where(not_ok > 0, idx, torch.full_like(idx, -1)).max(1).values
   settled = (last_bad < not_ok.shape[1] - 1) & ~fell
-  settle_s = torch.where(settled, (last_bad + 1) * DT, torch.full_like(last_bad, float("nan")))
+  settle_s = torch.where(
+    settled, (last_bad + 1) * DT, torch.full_like(last_bad, float("nan"))
+  )
   rows = [
     {
       "speed": float(mag[i]),
@@ -185,5 +195,10 @@ def main(a: Args) -> None:
   env.close()
 
 
-if __name__ == "__main__":
+def cli() -> None:
+  """Console entry point ``sm-push-test``."""
   main(tyro.cli(Args))
+
+
+if __name__ == "__main__":
+  cli()

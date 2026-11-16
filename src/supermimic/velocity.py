@@ -89,7 +89,9 @@ def reference_cmd(motion, times: torch.Tensor) -> torch.Tensor:
   last = ends[clip] - 1
   half = REF_WINDOW // 2
   offs = torch.arange(REF_WINDOW, device=times.device) - half
-  idx = torch.minimum(torch.maximum(times[:, None] + offs, start[:, None]), last[:, None])
+  idx = torch.minimum(
+    torch.maximum(times[:, None] + offs, start[:, None]), last[:, None]
+  )
   v = motion.root_lin_vel_w[idx].mean(1)
   wz = motion.root_ang_vel_w[idx][..., 2].mean(1)
   vxy = heading_frame_planar(motion.root_quat_w[times], v)
@@ -97,9 +99,13 @@ def reference_cmd(motion, times: torch.Tensor) -> torch.Tensor:
   return torch.clamp(torch.cat([vxy, wz[:, None]], -1), lo, hi)
 
 
-def measured_cmd_space(root_quat: torch.Tensor, lin_vel_w: torch.Tensor, ang_vel_w: torch.Tensor) -> torch.Tensor:
+def measured_cmd_space(
+  root_quat: torch.Tensor, lin_vel_w: torch.Tensor, ang_vel_w: torch.Tensor
+) -> torch.Tensor:
   """Robot (vx, vy) in its heading frame and world yaw rate."""
-  return torch.cat([heading_frame_planar(root_quat, lin_vel_w), ang_vel_w[..., 2:3]], -1)
+  return torch.cat(
+    [heading_frame_planar(root_quat, lin_vel_w), ang_vel_w[..., 2:3]], -1
+  )
 
 
 # ---------------------------------------------------------------------------
@@ -127,11 +133,15 @@ def velocity_reward(
   lo, hi = soft_joint_pos_limits.unbind(-1)
   limit = ((lo - joint_pos).clamp(min=0) + (joint_pos - hi).clamp(min=0)).sum(-1)
   hq = yaw_quat(root_quat)
-  torso_z_h = quat_apply_inverse(hq, torso_rot_w[..., :, 2])  # torso z-axis, heading frame
+  torso_z_h = quat_apply_inverse(
+    hq, torso_rot_w[..., :, 2]
+  )  # torso z-axis, heading frame
   lean = torso_z_h[..., 1] ** 2  # sin^2 of the sideways lean (forward lean free)
   w_h = quat_apply_inverse(hq, torso_ang_vel_w)
   rp_rate = w_h[..., 0] ** 2 + w_h[..., 1] ** 2
-  return dt * (2.0 * lin + 2.0 * yaw - 0.3 * smooth - 2.0 * limit - 4.0 * lean - 0.05 * rp_rate)
+  return dt * (
+    2.0 * lin + 2.0 * yaw - 0.3 * smooth - 2.0 * limit - 4.0 * lean - 0.05 * rp_rate
+  )
 
 
 def fall_error(root_pos: torch.Tensor, root_quat: torch.Tensor) -> torch.Tensor:
@@ -152,7 +162,9 @@ class VelocityActor(nn.Module):
   """``a = dec(tanh(enc_vel([cmd/scale, hist_n])), hist_n)`` with the motion
   tracker (decoder, normalizers, motion encoder) frozen."""
 
-  def __init__(self, base: MultiEncoderAE, hidden: tuple[int, ...], align_weight: float):
+  def __init__(
+    self, base: MultiEncoderAE, hidden: tuple[int, ...], align_weight: float
+  ):
     super().__init__()
     self.base = base
     base.requires_grad_(False)
@@ -199,4 +211,6 @@ def sigmoid_done(err: torch.Tensor, softness: float) -> torch.Tensor:
 def fall_termination(env) -> torch.Tensor:
   """mjlab termination term: fall rule of Table A.6 on the simulated robot."""
   d = env.scene["robot"].data
-  return fall_error(d.root_link_pos_w - env.scene.env_origins, d.root_link_quat_w) >= 1.0
+  return (
+    fall_error(d.root_link_pos_w - env.scene.env_origins, d.root_link_quat_w) >= 1.0
+  )

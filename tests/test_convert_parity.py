@@ -1,27 +1,18 @@
-"""Parity: repro.csv_to_npz.convert == mjlab.scripts.csv_to_npz.MotionLoader.
+"""Parity: supermimic.data.convert == mjlab.scripts.csv_to_npz.MotionLoader.
 
-Run: SM_PARITY_CSV='data/lafan1_g1/csv/*.csv' uv run pytest repro/test_csv_to_npz.py
+Needs real CSVs: SM_PARITY_CSV='data/lafan1_g1/csv/*.csv' uv run pytest tests/test_convert_parity.py
 """
 
 from __future__ import annotations
 
 import glob
-import importlib.util
 import os
-import sys
-from pathlib import Path
 
 import numpy as np
 import pytest
 from mjlab.scripts.csv_to_npz import MotionLoader
 
-_spec = importlib.util.spec_from_file_location(
-  "repro_csv_to_npz", Path(__file__).with_name("csv_to_npz.py")
-)
-assert _spec is not None and _spec.loader is not None
-repro = importlib.util.module_from_spec(_spec)
-sys.modules[_spec.name] = repro  # @dataclass looks the module up
-_spec.loader.exec_module(repro)
+from supermimic.data import convert as repro
 
 FILES = sorted(glob.glob(os.environ.get("SM_PARITY_CSV", "")))
 

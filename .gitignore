@@ -218,3 +218,6 @@ __marimo__/
 **/logs/
 **/wandb/*
 **/artifacts/
+
+# repro: motion data root (or a symlink to it); never committed
+/data

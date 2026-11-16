@@ -59,7 +59,9 @@ class VelocityWMEnv(WorldModelEnv):
 
   def get_observations(self) -> TensorDict:
     scale = cmd_scale(self.cmd.device)
-    critic = torch.cat([self.rep_state, self._wm_goal_obs, self.cmd / scale, self.sim_ctx], -1)
+    critic = torch.cat(
+      [self.rep_state, self._wm_goal_obs, self.cmd / scale, self.sim_ctx], -1
+    )
     obs = {
       "history": self._sensor_history(),
       "goal_motion": self._actor_goal_obs,
@@ -89,7 +91,9 @@ class VelocityWMEnv(WorldModelEnv):
       self.representation._soft_joint_pos_limits,
       self.representation.dt,
     )
-    term = sigmoid_done(fall_error(next_aux[..., :3], root_quat), self._termination_softness)
+    term = sigmoid_done(
+      fall_error(next_aux[..., :3], root_quat), self._termination_softness
+    )
     return next_aux, next_rep, next_joint, term, reward
 
 
@@ -108,7 +112,9 @@ class VelocityRunner(SuperMimicRunner):
 
   def _init_policy(self) -> None:
     v = self.cfg.velocity
-    snap = torch.load(Path(v.init_run_dir) / "snapshots" / v.init_snapshot, map_location=self.device)
+    snap = torch.load(
+      Path(v.init_run_dir) / "snapshots" / v.init_snapshot, map_location=self.device
+    )
     self._wm.load_bundle(snap["world_model"])
     base = build_actor(self.cfg, self._wm, self.device)
     base.load_state_dict(snap["actor"])
@@ -116,7 +122,9 @@ class VelocityRunner(SuperMimicRunner):
 
     rep = self._representation
     critic_in = rep.rep_state_dim + self._num_goals + 3 + self._sim_context.output_dim
-    critic = build_mlp(critic_in, self.cfg.critic_hidden_dims, output_dim=1).to(self.device)
+    critic = build_mlp(critic_in, self.cfg.critic_hidden_dims, output_dim=1).to(
+      self.device
+    )
 
     torso = list(self.motion_cmd.cfg.body_names).index("torso_link")
     self.wm_env = VelocityWMEnv(
@@ -158,7 +166,9 @@ class VelocityRunner(SuperMimicRunner):
     p_ref = 1.0 if v.mode == "distill" else v.p_ref
     ref = torch.rand(n, device=self.device) < p_ref
     self._cmd_ref = torch.where(mask, ref, self._cmd_ref)
-    self._cmd = torch.where(mask[:, None], sample_uniform_cmd(n, v.p_zero, self.device), self._cmd)
+    self._cmd = torch.where(
+      mask[:, None], sample_uniform_cmd(n, v.p_zero, self.device), self._cmd
+    )
     self._cmd_age = torch.where(mask, torch.zeros_like(self._cmd_age), self._cmd_age)
 
   def _update_actor_normalization(self, actor_inputs) -> None:
@@ -193,7 +203,11 @@ class VelocityRunner(SuperMimicRunner):
       )
       actions = self.policy_learner.actor(td)
       actions = actions + torch.randn_like(actions) * self._collection_noise_std()
-      extra = {"sim_ctx": sim_ctx, "vel_cmd": self._cmd.clone(), "vel_cmd_ref": self._cmd_ref.clone()}
+      extra = {
+        "sim_ctx": sim_ctx,
+        "vel_cmd": self._cmd.clone(),
+        "vel_cmd_ref": self._cmd_ref.clone(),
+      }
       if self._stores_actor_obs:
         extra["actor_obs"] = sim_actor_obs
       next_obs, rewards, dones, extras = self._step_and_store(
@@ -204,7 +218,9 @@ class VelocityRunner(SuperMimicRunner):
       self.logger.process_env_step(rewards, terminated, extras)
 
       d = self.env.unwrapped.scene["robot"].data
-      meas = measured_cmd_space(d.root_link_quat_w, d.root_link_lin_vel_w, d.root_link_ang_vel_w)
+      meas = measured_cmd_space(
+        d.root_link_quat_w, d.root_link_lin_vel_w, d.root_link_ang_vel_w
+      )
       self._err_sum += (meas - self._cmd).abs().mean(0)
       self._err_n += 1
       self._cmd_age += 1

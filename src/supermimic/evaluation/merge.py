@@ -4,7 +4,7 @@ Prints the overall normalized return / failed count, and failed motions per
 motion group in the style of the paper's Table A.8 (groups matched on clip
 names; our patterns, the paper does not publish its grouping).
 
-Usage: uv run repro/merge_eval.py --pattern 'eval/full_it*_shard*.json' --out merged.json
+Usage: uv run sm-merge-eval --pattern 'eval/full_it*_shard*.json' --out merged.json
 """
 
 from __future__ import annotations
@@ -73,5 +73,10 @@ def main(a: Args) -> None:
     open(a.out, "w").write(json.dumps(report, indent=1))
 
 
-if __name__ == "__main__":
+def cli() -> None:
+  """Console entry point ``sm-merge-eval``."""
   main(tyro.cli(Args))
+
+
+if __name__ == "__main__":
+  cli()
