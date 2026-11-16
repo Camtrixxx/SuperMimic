@@ -52,9 +52,14 @@ jobs:
         run: uv run pyright src/supermimic/data src/supermimic/evaluation src/supermimic/paths.py
       - name: CLI entry points
         run: |
+          fail=0
           for c in sm-convert sm-bones-name-filter sm-feasibility sm-bones-finalize sm-loco-library \
                    sm-eval sm-merge-eval sm-summarize-evals sm-push-test sm-velocity-step-test sm-train-velocity; do
-            uv run "$c" --help > /dev/null
+            if ! uv run "$c" --help > /dev/null 2> "/tmp/$c.err"; then
+              fail=1
+              echo "::error title=$c --help failed::$(tail -n 8 "/tmp/$c.err" | tr '\n' ' ' | cut -c1-900)"
+            fi
           done
+          exit $fail
       - name: Tests (CPU)
         run: uv run pytest -q tests/
